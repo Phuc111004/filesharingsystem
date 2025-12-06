@@ -1,6 +1,7 @@
 #include "file_utils.h"
 #include <unistd.h>
 #include <errno.h>
+#include <sys/socket.h>
 
 ssize_t send_all(int sockfd, const void* buf, size_t len) {
     const char* p = (const char*)buf;

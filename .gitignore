@@ -1,0 +1,22 @@
+# Ignore compiled binaries
+server
+client
+
+# Object files, executables
+*.o
+*.obj
+*.exe
+*.out
+
+# Build folders
+/build/
+/dist/
+
+# Editor files
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# Logs
+*.log

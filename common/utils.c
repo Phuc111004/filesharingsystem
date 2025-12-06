@@ -12,9 +12,9 @@ return s;
 }
 
 
-int hash_password(const char* password, char* out_hash, size_t out_size) {
-// TODO: replace with a proper password hashing (bcrypt/argon2). Placeholder below:
-if (!password || !out_hash) return -1;
-snprintf(out_hash, out_size, "HASHED_%s", password);
-return 0;
+int utils_hash_password(const char* password, char* out_hash, size_t out_size) {
+	// TODO: replace with a proper password hashing (bcrypt/argon2). Placeholder below:
+	if (!password || !out_hash) return -1;
+	snprintf(out_hash, out_size, "HASHED_%s", password);
+	return 0;
 }
