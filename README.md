@@ -33,3 +33,113 @@ Ubuntu:
 ```bash
 sudo apt-get install libmysqlclient-dev
 ```
+
+---
+
+## 🧭 Build & Run trên WSL (khuyến nghị cho Windows)
+
+Hướng dẫn này giả định bạn đang dùng WSL (Ubuntu). Nếu bạn ở Windows thuần, cài WSL trước.
+
+1. Cập nhật hệ và cài công cụ build + MySQL client libs:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential make default-libmysqlclient-dev libssl-dev
+```
+
+2. (Tùy chọn) Cài MySQL server để tạo DB local (hoặc dùng MySQL remote):
+
+```bash
+sudo apt install -y mysql-server
+sudo service mysql start
+# hoặc: sudo systemctl start mysql
+```
+
+3. Tạo database và áp schema của dự án:
+
+```bash
+# Trong thư mục gốc của repo
+mysql -u root -p < database/schema.sql
+```
+
+4. Build server và client:
+
+```bash
+make
+# sẽ tạo 2 binary: ./server và ./client
+```
+
+5. Chạy server (mở terminal):
+
+```bash
+./server
+```
+
+6. Chạy client (mở terminal khác):
+
+```bash
+./client
+```
+
+Ghi chú:
+
+- Nếu sử dụng user/password khác cho MySQL, chỉnh `config/db_config.h` tương ứng.
+- Project hiện cần hoàn thiện: server accept loop, query implementations, hashing mật khẩu an toàn, xử lý file chunked. README này chỉ hướng dẫn build/run cơ bản.
+
+---
+
+## 🗂 Cấu trúc project
+
+Mô tả nhanh các thư mục và file chính để bạn hoặc nhóm dễ nắm bắt:
+
+- `TCP_Server/`
+
+  - `server.c`: entrypoint cho server; hiện đã kiểm tra kết nối DB trước khi start.
+  - `connection_handler.c`, `connection_handler.h`: nơi implement accept loop, xử lý client, tạo thread cho mỗi client (hiện là stub/TODO).
+
+- `TCP_Client/`
+
+  - `client.c`, `client.h`: client-side main (kết nối tới server và chạy UI loop) — hiện là stub.
+  - `ui.c`: chức năng CLI (menu, input parsing).
+
+- `database/`
+
+  - `database.h`, `database.c`: wrapper cho MySQL C API: `db_connect()`, `db_close()`, `db_execute()` và `db_ping()` (đã thêm) để kiểm tra liveness.
+  - `queries.h`: prototype cho các hàm truy vấn (nên có file `queries.c` để implement các hàm như `db_create_user`, `db_get_user_by_username`).
+  - `schema.sql`: file SQL tạo schema database (đã sửa để tương thích với ER diagram và FK).
+
+- `common/`
+
+  - `protocol.h`: định nghĩa giao thức đơn giản (opcodes, header message) dùng để đóng khung request/response.
+  - `file_utils.c/h`: helper `send_all`/`recv_all` để gửi/nhận toàn bộ buffer (dùng cho truyền file theo chunk).
+  - `utils.c/h`: các tiện ích nhỏ (trim string, hash password placeholder — cần thay bằng bcrypt/argon2).
+
+- `models/`
+
+  - Các header định nghĩa struct cho domain: `user.h`, `group.h`, `request.h`, `directory.h`, `log.h`.
+
+- `config/`
+
+  - `db_config.h`: cấu hình DB (host, user, pass, dbname, port). Thay đổi ở đây ảnh hưởng tới `database/db_connect()`.
+
+- `Makefile`: build rules cho `server` và `client`. Hiện giả định môi trường POSIX (Linux/WSL) và phụ thuộc `libmysqlclient`.
+
+---
+
+## Mục tiêu các file chính / next steps (gợi ý cho team)
+
+- `connection_handler.c`: implement socket(), bind(), listen(), accept() loop và tạo thread cho mỗi client. Trong mỗi thread:
+
+  - tạo/hoặc lấy `MYSQL*` (mỗi thread nên có connection riêng hoặc gọi `mysql_thread_init()`/`mysql_thread_end()`)
+  - nhận header từ client, parse opcode từ `protocol.h`, gọi hàm DB tương ứng và trả về response
+  - xử lý upload/download file theo chunk dùng `file_utils` và cập nhật `root_directory`/`files` trong DB
+
+- `database/queries.c` (mới): implement prepared statements cho các thao tác CRUD chính: users, groups, user_groups, group_requests, root_directory/files, activity_log.
+
+- `common/utils.c`: thay hàm `hash_password` placeholder bằng bcrypt/argon2 (bảo mật). Có thể dùng `libbcrypt` hoặc `libargon2`.
+
+Nếu bạn muốn, tôi có thể tiếp tục và:
+
+- tạo `database/queries.c` với `db_create_user` và `db_get_user_by_username` (prepared statements), hoặc
+- implement accept loop cơ bản trong `connection_handler.c` (tạo socket, accept, pthread_create), hoặc
+- thêm script cài DB user & quyền.
