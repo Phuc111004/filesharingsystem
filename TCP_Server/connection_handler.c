@@ -17,6 +17,70 @@
 #define PORT 5500
 #define BACKLOG 20
 
+// Simple in-memory registry of logged-in usernames to prevent multiple simultaneous logins
+typedef struct logged_user {
+    char username[128];
+    struct logged_user *next;
+} logged_user_t;
+
+static logged_user_t *logged_head = NULL;
+static pthread_mutex_t logged_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static int is_logged_in(const char *username) {
+    if (!username || username[0] == '\0') return 0;
+    pthread_mutex_lock(&logged_mutex);
+    logged_user_t *it = logged_head;
+    while (it) {
+        if (strcmp(it->username, username) == 0) {
+            pthread_mutex_unlock(&logged_mutex);
+            return 1;
+        }
+        it = it->next;
+    }
+    pthread_mutex_unlock(&logged_mutex);
+    return 0;
+}
+
+static int add_logged_user(const char *username) {
+    if (!username || username[0] == '\0') return 0;
+    pthread_mutex_lock(&logged_mutex);
+    logged_user_t *it = logged_head;
+    while (it) {
+        if (strcmp(it->username, username) == 0) {
+            pthread_mutex_unlock(&logged_mutex);
+            return 0; // already present
+        }
+        it = it->next;
+    }
+    logged_user_t *node = malloc(sizeof(logged_user_t));
+    if (!node) {
+        pthread_mutex_unlock(&logged_mutex);
+        return 0;
+    }
+    strncpy(node->username, username, sizeof(node->username));
+    node->username[sizeof(node->username)-1] = '\0';
+    node->next = logged_head;
+    logged_head = node;
+    pthread_mutex_unlock(&logged_mutex);
+    return 1;
+}
+
+static void remove_logged_user(const char *username) {
+    if (!username || username[0] == '\0') return;
+    pthread_mutex_lock(&logged_mutex);
+    logged_user_t **p = &logged_head;
+    while (*p) {
+        if (strcmp((*p)->username, username) == 0) {
+            logged_user_t *to_free = *p;
+            *p = to_free->next;
+            free(to_free);
+            break;
+        }
+        p = &((*p)->next);
+    }
+    pthread_mutex_unlock(&logged_mutex);
+}
+
 void start_server() {
     int listen_sock, *conn_sock;
     struct sockaddr_in server_addr, client_addr;
@@ -91,6 +155,9 @@ void* client_thread(void* arg) {
         return NULL;
     }
 
+    // track current logged-in username for this connection (if any)
+    char current_user[128] = {0};
+
     // Buffer for accumulating received data and process line-by-line
     char inbuf[4096];
     size_t in_len = 0;
@@ -115,26 +182,66 @@ void* client_thread(void* arg) {
 
             // Handle command
             if (strncmp(line, "REGISTER ", 9) == 0) {
-                char *p = line + 9;
+                // If this connection already logged in, disallow creating a new account
+                if (current_user[0] != '\0') {
+                    const char *resp = "409 Already logged in\n";
+                    send(client_sock, resp, strlen(resp), 0);
+                } else {
+                    char *p = line + 9;
+                    char username[128];
+                    char password[128];
+                    if (sscanf(p, "%127s %127s", username, password) == 2) {
+                        char hash_out[512];
+                        if (utils_hash_password(password, hash_out, sizeof(hash_out)) != 0) {
+                            const char *resp = "500 Hash error\n";
+                            send(client_sock, resp, strlen(resp), 0);
+                        } else {
+                            int r = db_create_user(conn, username, hash_out);
+                            if (r == 0) {
+                                const char *resp = "201 Register success\n";
+                                send(client_sock, resp, strlen(resp), 0);
+                            } else if (r == 1) {
+                                const char *resp = "409 User exists\n";
+                                send(client_sock, resp, strlen(resp), 0);
+                            } else {
+                                const char *resp = "500 Register error\n";
+                                send(client_sock, resp, strlen(resp), 0);
+                            }
+                        }
+                    } else {
+                        const char *resp = "400 Bad request\n";
+                        send(client_sock, resp, strlen(resp), 0);
+                    }
+                }
+            } else if (strncmp(line, "LOGIN ", 6) == 0) {
+                char *p = line + 6;
                 char username[128];
                 char password[128];
                 if (sscanf(p, "%127s %127s", username, password) == 2) {
-                    char hash_out[512];
-                    if (utils_hash_password(password, hash_out, sizeof(hash_out)) != 0) {
-                        const char *resp = "500 Hash error\n";
-                        send(client_sock, resp, strlen(resp), 0);
-                    } else {
-                        int r = db_create_user(conn, username, hash_out);
-                        if (r == 0) {
-                            const char *resp = "201 Register success\n";
-                            send(client_sock, resp, strlen(resp), 0);
-                        } else if (r == 1) {
-                            const char *resp = "409 User exists\n";
+                    // check credentials
+                    int v = db_verify_user(conn, username, password);
+                    if (v == 0) {
+                        // valid credentials, check already logged in
+                        if (is_logged_in(username)) {
+                            const char *resp = "409 Already logged in\n";
                             send(client_sock, resp, strlen(resp), 0);
                         } else {
-                            const char *resp = "500 Register error\n";
-                            send(client_sock, resp, strlen(resp), 0);
+                            if (!add_logged_user(username)) {
+                                const char *resp = "500 Login error\n";
+                                send(client_sock, resp, strlen(resp), 0);
+                            } else {
+                                // mark current
+                                strncpy(current_user, username, sizeof(current_user)-1);
+                                const char *resp = "110 Login success\n";
+                                send(client_sock, resp, strlen(resp), 0);
+                            }
                         }
+                    } else if (v == 1) {
+                        const char *resp = "401 Login failed\n";
+                        send(client_sock, resp, strlen(resp), 0);
+                    } else {
+                        const char *resp = "500 Login error\n";
+                        send(client_sock, resp, strlen(resp), 0);
                     }
                 } else {
                     const char *resp = "400 Bad request\n";
@@ -166,6 +273,11 @@ void* client_thread(void* arg) {
             in_len = 0;
             inbuf[0] = '\0';
         }
+    }
+
+    // cleanup logged-in state if necessary
+    if (current_user[0] != '\0') {
+        remove_logged_user(current_user);
     }
 
     db_close(conn);

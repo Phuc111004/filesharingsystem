@@ -74,6 +74,32 @@ void run_client() {
 			}
 			buffer[rec] = '\0';
 			printf("Server: %s\n", buffer);
+		} else if (choice == 2) { // Login
+			char username[128];
+			char password[128];
+			printf("user: ");
+			if (!fgets(username, sizeof(username), stdin)) break;
+			username[strcspn(username, "\r\n")] = 0;
+			printf("password: ");
+			if (!fgets(password, sizeof(password), stdin)) break;
+			password[strcspn(password, "\r\n")] = 0;
+
+			// prepare request: LOGIN <user> <pass>\n
+			snprintf(buffer, sizeof(buffer), "LOGIN %s %s\n", username, password);
+			ssize_t sent = send(sockfd, buffer, strlen(buffer), 0);
+			if (sent <= 0) {
+				perror("send");
+				break;
+			}
+
+			// wait response
+			ssize_t rec = recv(sockfd, buffer, sizeof(buffer)-1, 0);
+			if (rec <= 0) {
+				perror("recv");
+				break;
+			}
+			buffer[rec] = '\0';
+			printf("Server: %s\n", buffer);
 		} else if (choice == 0) {
 			printf("Exiting client.\n");
 			break;
