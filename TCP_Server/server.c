@@ -2,6 +2,7 @@
 #include "connection_handler.h"
 #include <stdio.h>
 #include "../database/database.h"
+#include <errno.h>
 
 
 int main() {
