@@ -5,4 +5,6 @@
 void print_menu() {
 	printf("Menu:\n");
 	printf("1. Sign-up\n");
+	printf("2. Login\n");
+	printf("0. Exit\n");
 }

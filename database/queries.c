@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <mysql/mysql.h>
+#include "../common/utils.h"
 
 // Check if a username already exists
 int db_user_exists(MYSQL* conn, const char* username) {
@@ -64,4 +65,46 @@ int db_create_user(MYSQL* conn, const char* username, const char* password_hash)
 
     mysql_stmt_close(stmt);
     return 0;
+}
+
+
+// Verify username/password: returns 0 on success, 1 on invalid credentials, -1 on error
+int db_verify_user(MYSQL* conn, const char* username, const char* password) {
+    if (!conn || !username || !password) return -1;
+
+    // escape username
+    char esc[512];
+    unsigned long esc_len = mysql_real_escape_string(conn, esc, username, strlen(username));
+
+    char sql[1024];
+    snprintf(sql, sizeof(sql), "SELECT password FROM users WHERE username='%s' LIMIT 1", esc);
+
+    if (mysql_query(conn, sql) != 0) return -1;
+    MYSQL_RES *res = mysql_store_result(conn);
+    if (!res) return -1;
+
+    my_ulonglong num_rows = mysql_num_rows(res);
+    if (num_rows == 0) {
+        mysql_free_result(res);
+        return 1; // user not found -> invalid credentials
+    }
+
+    MYSQL_ROW row = mysql_fetch_row(res);
+    if (!row) {
+        mysql_free_result(res);
+        return -1;
+    }
+
+    const char *stored_hash = row[0] ? row[0] : "";
+
+    // compute hash of provided password
+    char provided_hash[512];
+    if (utils_hash_password(password, provided_hash, sizeof(provided_hash)) != 0) {
+        mysql_free_result(res);
+        return -1;
+    }
+
+    int result = (strcmp(stored_hash, provided_hash) == 0) ? 0 : 1;
+    mysql_free_result(res);
+    return result;
 }
