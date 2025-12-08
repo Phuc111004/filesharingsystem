@@ -11,7 +11,7 @@
 #include "ui.h"
 
 
-void run_client() {
+void run_client(const char *host, int port) {
 	int sockfd;
 	struct sockaddr_in serv_addr;
 	char buffer[1024];
@@ -24,8 +24,11 @@ void run_client() {
 
 	memset(&serv_addr, 0, sizeof(serv_addr));
 	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_port = htons(5500);
-	serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+	serv_addr.sin_port = htons(port);
+	if (inet_pton(AF_INET, host, &serv_addr.sin_addr) != 1) {
+		// fallback to inet_addr
+		serv_addr.sin_addr.s_addr = inet_addr(host);
+	}
 
 	if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
 		perror("connect");
@@ -112,7 +115,15 @@ void run_client() {
 }
 
 
-int main() {
-run_client();
-return 0;
+int main(int argc, char **argv) {
+	const char *host = "127.0.0.1";
+	int port = 5500;
+	if (argc >= 2) host = argv[1];
+	if (argc >= 3) {
+		int p = atoi(argv[2]);
+		if (p > 0) port = p;
+	}
+
+	run_client(host, port);
+	return 0;
 }

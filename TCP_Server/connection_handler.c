@@ -14,7 +14,6 @@
 #include "../database/queries.h"
 #include "../common/utils.h"
 
-#define PORT 5500
 #define BACKLOG 20
 
 // Simple in-memory registry of logged-in usernames to prevent multiple simultaneous logins
@@ -81,7 +80,7 @@ static void remove_logged_user(const char *username) {
     pthread_mutex_unlock(&logged_mutex);
 }
 
-void start_server() {
+void start_server(int port) {
     int listen_sock, *conn_sock;
     struct sockaddr_in server_addr, client_addr;
     socklen_t client_addr_len;
@@ -98,7 +97,7 @@ void start_server() {
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    server_addr.sin_port = htons(PORT);
+    server_addr.sin_port = htons(port);
 
     if (bind(listen_sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
         perror("Bind failed");
@@ -112,7 +111,7 @@ void start_server() {
         exit(EXIT_FAILURE);
     }
 
-    printf("[server] Server started on port %d. Waiting for connections...\n", PORT);
+    printf("[server] Server started on port %d. Waiting for connections...\n", port);
 
     while (1) {
         client_addr_len = sizeof(client_addr);
