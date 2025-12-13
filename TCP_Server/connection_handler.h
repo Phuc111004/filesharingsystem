@@ -5,7 +5,7 @@
 #include <netinet/in.h>
 
 
-void start_server();
+void start_server(int port);
 void* client_thread(void* arg);
 
 
