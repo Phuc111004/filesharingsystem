@@ -2,7 +2,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <unistd.h>
-
+#include <sys/stat.h> 
 
 void start_server() {
 // TODO: implement socket(), bind(), listen(), accept() loop
@@ -22,4 +22,24 @@ printf("[server] client thread (socket=%d) started (TODO)\n", client_sock);
 
 close(client_sock);
 return NULL;
+}
+
+void handle_upload(int client_sock) {
+    file_data meta;
+    
+    if (recv_all(client_sock, &meta, sizeof(meta)) <= 0) {
+        printf("[Server] Failed to receive metadata.\n");
+        return;
+    }
+
+    printf("[Server] Receiving file: %s (%lld bytes)\n", meta.filename, meta.filesize);
+
+    struct stat st = {0};
+    if (stat("storage", &st) == -1) {
+        mkdir("storage", 0700);
+    }
+
+    char filepath[512];
+    snprintf(filepath, sizeof(filepath), "storage/%s", meta.filename);
+
 }
