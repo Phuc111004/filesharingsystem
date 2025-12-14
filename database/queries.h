@@ -8,7 +8,11 @@
 
 // Example prototypes
 int db_create_user(MYSQL* conn, const char* username, const char* password_hash);
-int db_get_user_by_username(MYSQL* conn, const char* username, MYSQL_ROW *out_row);
+// Returns 1 if user exists, 0 if not, -1 on error
+int db_user_exists(MYSQL* conn, const char* username);
+
+// Verify username/password: returns 0 on success, 1 on invalid credentials, -1 on error
+int db_verify_user(MYSQL* conn, const char* username, const char* password);
 
 
 // Add more prototypes for groups, requests, directories, logs...
