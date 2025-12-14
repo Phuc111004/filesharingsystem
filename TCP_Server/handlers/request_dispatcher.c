@@ -1,0 +1,36 @@
+#include "request_dispatcher.h"
+#include "group_handlers.h"
+#include <stdio.h>
+#include <string.h>
+
+void dispatch_request(MYSQL *db, int current_user_id, char *buffer, char *response) {
+    char cmd[32] = {0};
+    char arg1[32] = {0};
+    char arg2[32] = {0};
+    
+    // Parse command
+    int n = sscanf(buffer, "%s %s %s", cmd, arg1, arg2);
+    if (n < 1) return; // Should be handled by caller if empty, but safe check here
+
+    if (strcmp(cmd, "JOIN_REQ") == 0) {
+        handle_join_req(db, current_user_id, arg1, response);
+    } 
+    else if (strcmp(cmd, "LEAVE_GROUP") == 0) {
+        handle_leave_group(db, current_user_id, arg1, response);
+    } 
+    else if (strcmp(cmd, "LIST_REQ") == 0) {
+        handle_list_pending_req(db, current_user_id, arg1, response);
+    } 
+    else if (strcmp(cmd, "APPROVE") == 0) {
+        handle_approve_req(db, current_user_id, arg1, arg2, response);
+    } 
+    else if (strcmp(cmd, "KICK") == 0) {
+        handle_kick_member(db, current_user_id, arg1, arg2, response);
+    } 
+    else if (strcmp(cmd, "INVITE") == 0) {
+        handle_invite_user(db, current_user_id, arg1, arg2, response);
+    } 
+    else {
+        strcpy(response, "400 Unknown Command");
+    }
+}

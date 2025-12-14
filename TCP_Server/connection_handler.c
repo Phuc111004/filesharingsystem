@@ -1,9 +1,14 @@
 #include "connection_handler.h"
 #include <pthread.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <errno.h>
 #include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <pthread.h>
+#include "../database/database.h"
+#include <stdio.h>
+#include <errno.h>
+#include "handlers/request_dispatcher.h"
 
 #define PORT 5500
 #define BACKLOG 20
@@ -79,21 +84,37 @@ void start_server() {
 
 
 void* client_thread(void* arg) {
-// TODO: receive requests, parse protocol, call DB functions, send responses
     int client_sock = *(int*)arg;
-    free(arg); // Giải phóng bộ nhớ đã malloc bên start_server
-    
-    // Detach luồng để tự thu hồi tài nguyên khi kết thúc (L05_06_ltm.pdf trang 17)
+    free(arg);
     pthread_detach(pthread_self());
 
     printf("[server] Client connected on socket %d\n", client_sock);
 
-    // TODO: Gọi các hàm xử lý login, upload, download ở đây
-    // Ví dụ demo: Gửi lời chào
-    char *msg = "Hello from Server!\n";
-    send(client_sock, msg, strlen(msg), 0);
+    MYSQL *db = db_connect();
+    if (!db) {
+        printf("[server] Failed to connect to DB for thread\n");
+        close(client_sock);
+        return NULL;
+    }
 
-    // Đóng socket khi xong việc
+    char buffer[1024];
+    // Mock user_id for demo (in real app, this comes from LOGIN)
+    int current_user_id = 1; 
+
+    while (recv(client_sock, buffer, sizeof(buffer)-1, 0) > 0) {
+        buffer[strcspn(buffer, "\n")] = 0; // trim newline
+        printf("[server] Received: %s\n", buffer);
+
+        char response[5120] = {0}; // Increased size to handle large lists
+        
+        // Delegate to dispatcher
+        dispatch_request(db, current_user_id, buffer, response);
+
+        send(client_sock, response, strlen(response)+1, 0);
+        memset(buffer, 0, sizeof(buffer));
+    }
+
+    db_close(db);
     close(client_sock);
     printf("[server] Client on socket %d disconnected.\n", client_sock);
     return NULL;
