@@ -19,6 +19,8 @@
 #include "../database/database.h"
 #include "../database/queries.h"
 #include "../common/utils.h"
+#include "../common/protocol.h"
+#include "../common/file_utils.h"
 
 #define BACKLOG 20
 
