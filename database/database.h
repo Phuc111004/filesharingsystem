@@ -1,18 +1,36 @@
 #ifndef DATABASE_H
 #define DATABASE_H
-
-
 #include <mysql/mysql.h>
-
 
 MYSQL* db_connect();
 void db_close(MYSQL* conn);
-
 
 // helper: execute a query that does not return rows
 int db_execute(MYSQL* conn, const char* sql);
 // helper: check connection liveness
 int db_ping(MYSQL* conn);
+
+// Group Request Functions
+int db_create_group_request(MYSQL* conn, int user_id, int group_id, const char* type);
+int db_update_request_status(MYSQL* conn, int request_id, const char* status);
+int db_add_group_member(MYSQL* conn, int user_id, int group_id, const char* role);
+int db_remove_group_member(MYSQL* conn, int user_id, int group_id);
+// Note: For simplicity in this C demo, we might just print results or return a string.
+// In a real app, we would return a struct list.
+void db_list_pending_requests(MYSQL* conn, int user_id, char* buffer, size_t size);
+
+// Helpers for new features
+int db_is_group_admin(MYSQL* conn, int user_id, int group_id);
+int db_get_user_id_by_name(MYSQL* conn, const char* username);
+int db_check_group_exists(MYSQL* conn, int group_id);
+void db_list_all_groups(MYSQL* conn, char* buffer, size_t size);
+
+// Enhanced group management queries
+void db_list_admin_groups(MYSQL* conn, int user_id, char* buffer, size_t size);
+void db_list_non_members(MYSQL* conn, int group_id, char* buffer, size_t size);
+void db_list_group_members(MYSQL* conn, int group_id, char* buffer, size_t size);
+void db_list_join_requests_for_admin(MYSQL* conn, int user_id, char* buffer, size_t size);
+void db_list_invitations_for_user(MYSQL* conn, int user_id, char* buffer, size_t size);
 
 
 #endif // DATABASE_H
