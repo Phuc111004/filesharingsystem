@@ -176,6 +176,9 @@ void* client_thread(void* arg) {
         in_len += (size_t)n;
         inbuf[in_len] = '\0';
 
+        // n -> cmd, arg1, arg2
+        
+
         // process all complete lines
         char *line_start = inbuf;
         char *newline;
