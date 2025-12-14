@@ -7,9 +7,24 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#include "../common/utils.h"
 #include "ui.h"
+#include "../common/utils.h"
+#include "../common/protocol.h"
+#include "../common/file_utils.h"
 
+void send_request(int sock, int cmd, void *data, int data_len) {
+    msg_header_t header;
+    header.cmd = htonl(cmd);          
+    header.length = htonl(data_len);  
+    
+    // 1. Gửi Header (8 bytes)
+    send_all(sock, &header, sizeof(header));
+    
+    // 2. Gửi Body (nếu có)
+    if (data_len > 0 && data != NULL) {
+        send_all(sock, data, data_len);
+    }
+}
 
 void run_client(const char *host, int port) {
 	int sockfd;

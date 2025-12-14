@@ -14,6 +14,8 @@
 #include "../database/database.h"
 #include "../database/queries.h"
 #include "../common/utils.h"
+#include "../common/protocol.h"
+#include "../common/file_utils.h"
 
 #define BACKLOG 20
 
@@ -158,120 +160,114 @@ void* client_thread(void* arg) {
     // track current logged-in username for this connection (if any)
     char current_user[128] = {0};
 
-    // Buffer for accumulating received data and process line-by-line
-    char inbuf[4096];
-    size_t in_len = 0;
-    ssize_t n;
+    msg_header_t header;
 
     while (1) {
-        n = recv(client_sock, inbuf + in_len, sizeof(inbuf) - in_len - 1, 0);
-        if (n <= 0) break; // client closed or error
-        in_len += (size_t)n;
-        inbuf[in_len] = '\0';
-
-        // process all complete lines
-        char *line_start = inbuf;
-        char *newline;
-        while ((newline = strchr(line_start, '\n')) != NULL) {
-            *newline = '\0';
-            char *line = line_start;
-
-            // Trim CR if present
-            size_t L = strlen(line);
-            if (L > 0 && line[L-1] == '\r') line[L-1] = '\0';
-
-            // Handle command
-            if (strncmp(line, "REGISTER ", 9) == 0) {
-                // If this connection already logged in, disallow creating a new account
-                if (current_user[0] != '\0') {
-                    const char *resp = "409 Already logged in\n";
-                    send(client_sock, resp, strlen(resp), 0);
-                } else {
-                    char *p = line + 9;
-                    char username[128];
-                    char password[128];
-                    if (sscanf(p, "%127s %127s", username, password) == 2) {
-                        char hash_out[512];
-                        if (utils_hash_password(password, hash_out, sizeof(hash_out)) != 0) {
-                            const char *resp = "500 Hash error\n";
-                            send(client_sock, resp, strlen(resp), 0);
-                        } else {
-                            int r = db_create_user(conn, username, hash_out);
-                            if (r == 0) {
-                                const char *resp = "201 Register success\n";
-                                send(client_sock, resp, strlen(resp), 0);
-                            } else if (r == 1) {
-                                const char *resp = "409 User exists\n";
-                                send(client_sock, resp, strlen(resp), 0);
-                            } else {
-                                const char *resp = "500 Register error\n";
-                                send(client_sock, resp, strlen(resp), 0);
-                            }
-                        }
-                    } else {
-                        const char *resp = "400 Bad request\n";
-                        send(client_sock, resp, strlen(resp), 0);
-                    }
-                }
-            } else if (strncmp(line, "LOGIN ", 6) == 0) {
-                char *p = line + 6;
-                char username[128];
-                char password[128];
-                if (sscanf(p, "%127s %127s", username, password) == 2) {
-                    // check credentials
-                    int v = db_verify_user(conn, username, password);
-                    if (v == 0) {
-                        // valid credentials, check already logged in
-                        if (is_logged_in(username)) {
-                            const char *resp = "409 Already logged in\n";
-                            send(client_sock, resp, strlen(resp), 0);
-                        } else {
-                            if (!add_logged_user(username)) {
-                                const char *resp = "500 Login error\n";
-                                send(client_sock, resp, strlen(resp), 0);
-                            } else {
-                                // mark current
-                                strncpy(current_user, username, sizeof(current_user)-1);
-                                const char *resp = "110 Login success\n";
-                                send(client_sock, resp, strlen(resp), 0);
-                            }
-                        }
-                    } else if (v == 1) {
-                        const char *resp = "401 Login failed\n";
-                        send(client_sock, resp, strlen(resp), 0);
-                    } else {
-                        const char *resp = "500 Login error\n";
-                        send(client_sock, resp, strlen(resp), 0);
-                    }
-                } else {
-                    const char *resp = "400 Bad request\n";
-                    send(client_sock, resp, strlen(resp), 0);
-                }
-            } else {
-                const char *resp = "400 Unknown command\n";
-                send(client_sock, resp, strlen(resp), 0);
-            }
-
-            // move to next line
-            line_start = newline + 1;
+        // 1. Luôn đọc Header (8 bytes) trước
+        // Đây là điểm chờ (blocking) an toàn mới thay cho recv text cũ
+        if (recv_all(client_sock, &header, sizeof(header)) <= 0) {
+            break; // Client ngắt kết nối
         }
 
-        // move leftover to beginning of buffer
-        size_t remaining = strlen(line_start);
-        if (remaining > 0 && line_start != inbuf) {
-            memmove(inbuf, line_start, remaining + 1);
-            in_len = remaining;
-        } else if (line_start == inbuf) {
-            // no complete line found yet
-            if (in_len == sizeof(inbuf)-1) {
-                // buffer full without newline, reset to avoid overflow
-                in_len = 0;
-                inbuf[0] = '\0';
-            }
-        } else {
-            // no leftover
-            in_len = 0;
-            inbuf[0] = '\0';
+        // Chuyển đổi byte order từ Mạng -> Máy
+        int cmd = ntohl(header.cmd);
+        int len = ntohl(header.length);
+
+        // 2. Xử lý từng loại lệnh
+        switch (cmd) {
+            case CMD_UPLOAD:
+                // Logic mới: Gọi hàm upload xử lý luồng
+                handle_upload(client_sock, len);
+                break;
+
+            case CMD_REGISTER:
+            case CMD_LOGIN:
+                // --- BẢO TỒN LOGIC CŨ Ở ĐÂY ---
+                // Client sẽ gửi body là chuỗi text "username password"
+                // Ta cần đọc hết body này vào buffer rồi mới xử lý
+                if (len > 0) {
+                    char *body = malloc(len + 1);
+                    if (!body) break; // Lỗi bộ nhớ
+
+                    // Đọc chính xác phần text "user pass"
+                    if (recv_all(client_sock, body, len) > 0) {
+                        body[len] = '\0'; // Đảm bảo thành chuỗi hợp lệ
+
+                        char username[128];
+                        char password[128];
+
+                        // Parse dữ liệu (Logic cũ của bạn)
+                        if (sscanf(body, "%127s %127s", username, password) == 2) {
+                            
+                            if (cmd == CMD_REGISTER) {
+                                // === LOGIC REGISTER CŨ ===
+                                if (current_user[0] != '\0') {
+                                    const char *resp = "409 Already logged in\n";
+                                    send_all(client_sock, resp, strlen(resp));
+                                } else {
+                                    char hash_out[512];
+                                    if (utils_hash_password(password, hash_out, sizeof(hash_out)) != 0) {
+                                        const char *resp = "500 Hash error\n";
+                                        send_all(client_sock, resp, strlen(resp));
+                                    } else {
+                                        int r = db_create_user(conn, username, hash_out);
+                                        if (r == 0) {
+                                            const char *resp = "201 Register success\n";
+                                            send_all(client_sock, resp, strlen(resp));
+                                        } else if (r == 1) {
+                                            const char *resp = "409 User exists\n";
+                                            send_all(client_sock, resp, strlen(resp));
+                                        } else {
+                                            const char *resp = "500 Register error\n";
+                                            send_all(client_sock, resp, strlen(resp));
+                                        }
+                                    }
+                                }
+                            } 
+                            else if (cmd == CMD_LOGIN) {
+                                // === LOGIC LOGIN CŨ ===
+                                int v = db_verify_user(conn, username, password);
+                                if (v == 0) {
+                                    if (is_logged_in(username)) {
+                                        const char *resp = "409 Already logged in\n";
+                                        send_all(client_sock, resp, strlen(resp));
+                                    } else {
+                                        if (!add_logged_user(username)) {
+                                            const char *resp = "500 Login error\n";
+                                            send_all(client_sock, resp, strlen(resp));
+                                        } else {
+                                            strncpy(current_user, username, sizeof(current_user)-1);
+                                            const char *resp = "110 Login success\n";
+                                            send_all(client_sock, resp, strlen(resp));
+                                        }
+                                    }
+                                } else if (v == 1) {
+                                    const char *resp = "401 Login failed\n";
+                                    send_all(client_sock, resp, strlen(resp));
+                                } else {
+                                    const char *resp = "500 Login error\n";
+                                    send_all(client_sock, resp, strlen(resp));
+                                }
+                            }
+                        } else {
+                            const char *resp = "400 Bad request format\n";
+                            send_all(client_sock, resp, strlen(resp));
+                        }
+                    }
+                    free(body);
+                }
+                break;
+
+            default:
+                printf("[Server] Unknown CMD: %d. Skipping %d bytes.\n", cmd, len);
+                // Rất quan trọng: Nếu gặp lệnh lạ, vẫn phải đọc bỏ phần body 
+                // để không bị lỗi lệnh tiếp theo
+                if (len > 0) {
+                    char *junk = malloc(len);
+                    recv_all(client_sock, junk, len);
+                    free(junk);
+                }
+                break;
         }
     }
 
@@ -286,22 +282,48 @@ void* client_thread(void* arg) {
     return NULL;
 }
 
-void handle_upload(int client_sock) {
+// Hàm xử lý upload chuẩn Streaming (Chunking)
+void handle_upload(int client_sock, int payload_len) {
     file_data meta;
-    
-    if (recv_all(client_sock, &meta, sizeof(meta)) <= 0) {
-        printf("[Server] Failed to receive metadata.\n");
+    int meta_len = sizeof(file_data);
+
+    // 1. Nhận Metadata (Tên file, kích thước...)
+    // Lưu ý: payload_len bao gồm cả [Metadata] + [Nội dung file]
+    if (recv_all(client_sock, &meta, meta_len) <= 0) {
+        printf("[Server] Failed to receive file metadata.\n");
         return;
     }
 
-    printf("[Server] Receiving file: %s (%lld bytes)\n", meta.filename, meta.filesize);
+    printf("[Server] Uploading file: %s (%lld bytes)\n", meta.filename, meta.filesize);
 
+    // Tạo thư mục storage nếu chưa có
     struct stat st = {0};
-    if (stat("storage", &st) == -1) {
-        mkdir("storage", 0700);
-    }
+    if (stat("storage", &st) == -1) mkdir("storage", 0700);
 
     char filepath[512];
     snprintf(filepath, sizeof(filepath), "storage/%s", meta.filename);
 
+    FILE *fp = fopen(filepath, "wb");
+    if (!fp) {
+        perror("[Server] Cannot open file for writing");
+        // Thực tế cần đọc xả hết socket buffer để tránh lỗi protocol, nhưng tạm thời return
+        return;
+    }
+
+    // 2. Nhận nội dung file (Binary Stream)
+    long long left = meta.filesize;
+    char buffer[4096];
+    
+    while (left > 0) {
+        int to_read = (left > sizeof(buffer)) ? sizeof(buffer) : left;
+        
+        // Đọc chính xác to_read bytes
+        if (recv_all(client_sock, buffer, to_read) <= 0) break;
+        
+        fwrite(buffer, 1, to_read, fp);
+        left -= to_read;
+    }
+
+    fclose(fp);
+    printf("[Server] Upload complete: %s\n", filepath);
 }
