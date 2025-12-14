@@ -56,15 +56,43 @@ void handle_approve_req(MYSQL *db, int current_user_id, const char *arg1, const 
     int req_id = atoi(arg1);
     char type = arg2[0]; // 'A' or 'R'
     
-    // In real app: check if current_user_id is admin of the group this request belongs to.
-    // Skipping check for demo brevity.
+    // Fetch user_id and group_id from the request
+    char query[512];
+    snprintf(query, sizeof(query),
+        "SELECT user_id, group_id FROM group_requests WHERE request_id = %d", req_id);
+    
+    if (mysql_query(db, query)) {
+        strcpy(response, "500 Database error");
+        return;
+    }
+    
+    MYSQL_RES *res = mysql_store_result(db);
+    MYSQL_ROW row = mysql_fetch_row(res);
+    
+    if (!row) {
+        strcpy(response, "404 Request not found");
+        mysql_free_result(res);
+        return;
+    }
+    
+    int user_id = atoi(row[0]);
+    int group_id = atoi(row[1]);
+    mysql_free_result(res);
     
     if (type == 'A') {
+        // Update request status to accepted
         db_update_request_status(db, req_id, "accepted");
-        strcpy(response, "200 Processed (Accepted)");
+        
+        // Add user to group
+        int result = db_add_group_member(db, user_id, group_id, "member");
+        if (result == 0) {
+            strcpy(response, "200 Request accepted, user added to group");
+        } else {
+            strcpy(response, "200 Request accepted but failed to add user to group");
+        }
     } else if (type == 'R') {
         db_update_request_status(db, req_id, "rejected");
-        strcpy(response, "200 Processed (Rejected)");
+        strcpy(response, "200 Request rejected");
     } else {
         strcpy(response, "400 Bad Request");
     }

@@ -177,5 +177,16 @@ Sau khi chạy xong, bạn có thể kiểm tra xem bảng đã được tạo c
 ```sql
 USE file_sharing;
 SHOW TABLES;
+```
+
+```sql
 SELECT * FROM users;
+SELECT * FROM groups;
+```
+
+hoặc
+
+```sql
+SELECT * FROM users;
+SELECT * FROM `groups`;
 ```

@@ -174,3 +174,198 @@ int db_check_group_exists(MYSQL* conn, int group_id) {
     mysql_free_result(res);
     return exists;
 }
+
+void db_list_all_groups(MYSQL* conn, char* buffer, size_t size) {
+    char query[1024];
+    snprintf(query, sizeof(query),
+        "SELECT g.group_id, g.group_name, u.username "
+        "FROM `groups` g "
+        "JOIN users u ON g.created_by = u.user_id "
+        "ORDER BY g.group_id");
+    
+    if (mysql_query(conn, query)) {
+        snprintf(buffer, size, "Error querying groups.");
+        return;
+    }
+    
+    MYSQL_RES *res = mysql_store_result(conn);
+    MYSQL_ROW row;
+    
+    strcpy(buffer, "");
+    int count = 0;
+    while ((row = mysql_fetch_row(res))) {
+        char line[256];
+        count++;
+        // Format: [num] GroupName (Admin: username) [ID: group_id]
+        snprintf(line, sizeof(line), "[%d] %s (Admin: %s) [ID: %s]\n", 
+                 count, row[1], row[2], row[0]);
+        strncat(buffer, line, size - strlen(buffer) - 1);
+    }
+    
+    if (count == 0) {
+        strcpy(buffer, "No groups available.");
+    }
+    
+    mysql_free_result(res);
+}
+
+// Enhanced group management functions
+
+void db_list_admin_groups(MYSQL* conn, int user_id, char* buffer, size_t size) {
+    char query[1024];
+    snprintf(query, sizeof(query),
+        "SELECT g.group_id, g.group_name "
+        "FROM `groups` g "
+        "JOIN user_groups ug ON g.group_id = ug.group_id "
+        "WHERE ug.user_id = %d AND ug.role = 'admin' "
+        "ORDER BY g.group_id", user_id);
+    
+    if (mysql_query(conn, query)) {
+        snprintf(buffer, size, "Error querying admin groups.");
+        return;
+    }
+    
+    MYSQL_RES *res = mysql_store_result(conn);
+    MYSQL_ROW row;
+    
+    strcpy(buffer, "");
+    int count = 0;
+    while ((row = mysql_fetch_row(res))) {
+        char line[256];
+        count++;
+        snprintf(line, sizeof(line), "[%d] %s [ID: %s]\n", count, row[1], row[0]);
+        strncat(buffer, line, size - strlen(buffer) - 1);
+    }
+    
+    if (count == 0) strcpy(buffer, "You are not admin of any groups.");
+    mysql_free_result(res);
+}
+
+void db_list_non_members(MYSQL* conn, int group_id, char* buffer, size_t size) {
+    char query[1024];
+    snprintf(query, sizeof(query),
+        "SELECT u.user_id, u.username "
+        "FROM users u "
+        "WHERE u.user_id NOT IN ( "
+        "   SELECT user_id FROM user_groups WHERE group_id = %d "
+        ") "
+        "ORDER BY u.username", group_id);
+    
+    if (mysql_query(conn, query)) {
+        snprintf(buffer, size, "Error querying non-members.");
+        return;
+    }
+    
+    MYSQL_RES *res = mysql_store_result(conn);
+    MYSQL_ROW row;
+    
+    strcpy(buffer, "");
+    int count = 0;
+    while ((row = mysql_fetch_row(res))) {
+        char line[128];
+        count++;
+        snprintf(line, sizeof(line), "[%d] %s\n", count, row[1]);
+        strncat(buffer, line, size - strlen(buffer) - 1);
+    }
+    
+    if (count == 0) strcpy(buffer, "All users are already members.");
+    mysql_free_result(res);
+}
+
+void db_list_group_members(MYSQL* conn, int group_id, char* buffer, size_t size) {
+    char query[1024];
+    snprintf(query, sizeof(query),
+        "SELECT u.username, ug.role "
+        "FROM user_groups ug "
+        "JOIN users u ON ug.user_id = u.user_id "
+        "WHERE ug.group_id = %d AND ug.role = 'member' "
+        "ORDER BY u.username", group_id);
+    
+    if (mysql_query(conn, query)) {
+        snprintf(buffer, size, "Error querying members.");
+        return;
+    }
+    
+    MYSQL_RES *res = mysql_store_result(conn);
+    MYSQL_ROW row;
+    
+    strcpy(buffer, "");
+    int count = 0;
+    while ((row = mysql_fetch_row(res))) {
+        char line[128];
+        count++;
+        snprintf(line, sizeof(line), "[%d] %s\n", count, row[0]);
+        strncat(buffer, line, size - strlen(buffer) - 1);
+    }
+    
+    if (count == 0) strcpy(buffer, "No members to kick (only admins in group).");
+    mysql_free_result(res);
+}
+
+void db_list_join_requests_for_admin(MYSQL* conn, int user_id, char* buffer, size_t size) {
+    char query[1024];
+    snprintf(query, sizeof(query),
+        "SELECT r.request_id, g.group_name, u.username, r.created_at "
+        "FROM group_requests r "
+        "JOIN `groups` g ON r.group_id = g.group_id "
+        "JOIN users u ON r.user_id = u.user_id "
+        "WHERE r.request_type = 'join_request' "
+        "  AND r.status = 'pending' "
+        "  AND r.group_id IN (SELECT group_id FROM user_groups WHERE user_id = %d AND role = 'admin') "
+        "ORDER BY r.created_at DESC", user_id);
+    
+    if (mysql_query(conn, query)) {
+        snprintf(buffer, size, "Error querying join requests.");
+        return;
+    }
+    
+    MYSQL_RES *res = mysql_store_result(conn);
+    MYSQL_ROW row;
+    
+    strcpy(buffer, "");
+    int count = 0;
+    while ((row = mysql_fetch_row(res))) {
+        char line[256];
+        count++;
+        snprintf(line, sizeof(line), "[%d] Group: %s | User: %s [ReqID: %s]\n", 
+                 count, row[1], row[2], row[0]);
+        strncat(buffer, line, size - strlen(buffer) - 1);
+    }
+    
+    if (count == 0) strcpy(buffer, "No pending join requests.");
+    mysql_free_result(res);
+}
+
+void db_list_invitations_for_user(MYSQL* conn, int user_id, char* buffer, size_t size) {
+    char query[1024];
+    snprintf(query, sizeof(query),
+        "SELECT r.request_id, g.group_name, u.username, r.created_at "
+        "FROM group_requests r "
+        "JOIN `groups` g ON r.group_id = g.group_id "
+        "JOIN users u ON g.created_by = u.user_id "
+        "WHERE r.request_type = 'invitation' "
+        "  AND r.status = 'pending' "
+        "  AND r.user_id = %d "
+        "ORDER BY r.created_at DESC", user_id);
+    
+    if (mysql_query(conn, query)) {
+        snprintf(buffer, size, "Error querying invitations.");
+        return;
+    }
+    
+    MYSQL_RES *res = mysql_store_result(conn);
+    MYSQL_ROW row;
+    
+    strcpy(buffer, "");
+    int count = 0;
+    while ((row = mysql_fetch_row(res))) {
+        char line[256];
+        count++;
+        snprintf(line, sizeof(line), "[%d] Group: %s | Admin: %s [InvID: %s]\n", 
+                 count, row[1], row[2], row[0]);
+        strncat(buffer, line, size - strlen(buffer) - 1);
+    }
+    
+    if (count == 0) strcpy(buffer, "No pending invitations.");
+    mysql_free_result(res);
+}

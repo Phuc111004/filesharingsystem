@@ -1,5 +1,6 @@
 #include "request_dispatcher.h"
 #include "group_handlers.h"
+#include "../../database/database.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -30,6 +31,26 @@ void dispatch_request(MYSQL *db, int current_user_id, char *buffer, char *respon
     else if (strcmp(cmd, "INVITE") == 0) {
         handle_invite_user(db, current_user_id, arg1, arg2, response);
     } 
+    else if (strcmp(cmd, "LIST_GROUPS") == 0) {
+        db_list_all_groups(db, response, 4096);
+    } 
+    else if (strcmp(cmd, "LIST_ADMIN_GROUPS") == 0) {
+        db_list_admin_groups(db, current_user_id, response, 4096);
+    }
+    else if (strcmp(cmd, "LIST_NON_MEMBERS") == 0) {
+        int group_id = atoi(arg1);
+        db_list_non_members(db, group_id, response, 4096);
+    }
+    else if (strcmp(cmd, "LIST_MEMBERS") == 0) {
+        int group_id = atoi(arg1);
+        db_list_group_members(db, group_id, response, 4096);
+    }
+    else if (strcmp(cmd, "LIST_JOIN_REQUESTS") == 0) {
+        db_list_join_requests_for_admin(db, current_user_id, response, 4096);
+    }
+    else if (strcmp(cmd, "LIST_MY_INVITATIONS") == 0) {
+        db_list_invitations_for_user(db, current_user_id, response, 4096);
+    }
     else {
         strcpy(response, "400 Unknown Command");
     }

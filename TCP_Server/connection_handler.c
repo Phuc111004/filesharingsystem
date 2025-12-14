@@ -1,35 +1,27 @@
 #include "connection_handler.h"
 #include "../common/protocol.h"
 #include "../common/file_utils.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <pthread.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <pthread.h>
+#include "../common/utils.h"
 #include "../database/database.h"
-#include <stdio.h>
-#include <sys/stat.h> 
-#include <errno.h>
+#include "../database/queries.h"
 #include "handlers/request_dispatcher.h"
+
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <mysql/mysql.h>
-#include "../database/database.h"
-#include "../database/queries.h"
-#include "../common/utils.h"
-#include "../common/protocol.h"
-#include "../common/file_utils.h"
+#include <sys/stat.h>
+#include <errno.h>
+#include <time.h>
 
 #define BACKLOG 20
+#define CHUNK_SIZE 4096
 
-// Simple in-memory registry of logged-in usernames to prevent multiple simultaneous logins
+// --- In-memory Logged User Registry ---
 typedef struct logged_user {
     char username[128];
     struct logged_user *next;
@@ -60,122 +52,244 @@ static int add_logged_user(const char *username) {
     while (it) {
         if (strcmp(it->username, username) == 0) {
             pthread_mutex_unlock(&logged_mutex);
-            return 0; // already present
+            return 0; // Already present
         }
         it = it->next;
     }
     logged_user_t *node = malloc(sizeof(logged_user_t));
-    if (!node) {
+    if (node) {
+        strncpy(node->username, username, 127);
+        node->username[127] = '\0';
+        node->next = logged_head;
+        logged_head = node;
         pthread_mutex_unlock(&logged_mutex);
-        return 0;
-#include <sys/stat.h> // Để dùng mkdir
+        return 1;
+    }
+    pthread_mutex_unlock(&logged_mutex);
+    return 0;
+}
 
-#define CHUNK_SIZE 4096
+static void remove_logged_user(const char *username) {
+    if (!username || username[0] == '\0') return;
+    pthread_mutex_lock(&logged_mutex);
+    logged_user_t **curr = &logged_head;
+    while (*curr) {
+        if (strcmp((*curr)->username, username) == 0) {
+            logged_user_t *temp = *curr;
+            *curr = (*curr)->next;
+            free(temp);
+            break;
+        }
+        curr = &(*curr)->next;
+    }
+    pthread_mutex_unlock(&logged_mutex);
+}
+void perform_send_and_log(int sock, const char* raw_cmd, const char* resp) {
+    if (!resp) return;
 
-// Hàm xử lý nhận file
-void handle_upload_server(int client_sock) {
-    // 1. Nhận Metadata tương ứng với Client gửi
-    int name_len;
-    if (recv_all(client_sock, &name_len, sizeof(int)) <= 0) return;
+    // Timestamp
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    char time_str[64];
+    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", t);
 
+    // Clean cmd for logging (remove newline)
+    char cmd_clean[256];
+    if (raw_cmd) {
+        strncpy(cmd_clean, raw_cmd, 255);
+        cmd_clean[255] = '\0';
+        char *nl = strchr(cmd_clean, '\n');
+        if (nl) *nl = '\0';
+        nl = strchr(cmd_clean, '\r');
+        if (nl) *nl = '\0';
+    } else {
+        strcpy(cmd_clean, "(Internal/NoCmd)");
+    }
+
+    // Clean resp for logging
+    char resp_clean[256];
+    strncpy(resp_clean, resp, 255);
+    resp_clean[255] = '\0';
+    char *nl = strchr(resp_clean, '\n'); 
+    if (nl) *nl = '\0'; 
+
+    printf("[%s] CMD: %-20s | RESP: %s\n", time_str, cmd_clean, resp_clean);
+
+    send_all(sock, resp, strlen(resp));
+}
+
+// --- Upload Handler ---
+void handle_upload_request(int client_sock, const char *arg_filename, const char *arg_filesize) {
+    long long filesize = atoll(arg_filesize);
     char filename[256];
-    if (recv_all(client_sock, filename, name_len) <= 0) return;
-    filename[name_len] = '\0'; // Null terminate
+    strncpy(filename, arg_filename, 255);
+    filename[255] = '\0';
+    
+    char log_info[512];
+    snprintf(log_info, sizeof(log_info), "UPLOAD %s %lld", filename, filesize);
 
-    long filesize;
-    if (recv_all(client_sock, &filesize, sizeof(long)) <= 0) return;
+    // 1. Send Ready
+    char ready_msg[64];
+    snprintf(ready_msg, sizeof(ready_msg), "%d Ready\n", RES_UPLOAD_READY);
+    perform_send_and_log(client_sock, log_info, ready_msg);
 
-    printf("[Server] Receiving file: %s (%ld bytes)\n", filename, filesize);
-
-    // Tạo thư mục storage nếu chưa có
+    // 2. Prepare Storage
     struct stat st = {0};
     if (stat("storage", &st) == -1) {
         mkdir("storage", 0700);
     }
-
     char filepath[512];
     snprintf(filepath, sizeof(filepath), "storage/%s", filename);
 
     FILE *fp = fopen(filepath, "wb");
     if (!fp) {
-        perror("[Server] Cannot create file");
-        // Cần cơ chế báo lỗi về client, nhưng tạm thời return
-        return;
+        perror("[Server] File open error");
+        return; 
     }
 
-    // 2. Nhận Stream nội dung file
+    // 3. Receive Loop
     char buffer[CHUNK_SIZE];
-    long total_received = 0;
-    long remaining = filesize;
-
+    long long remaining = filesize;
+    long long total_received = 0;
     while (remaining > 0) {
         size_t to_read = (remaining < CHUNK_SIZE) ? remaining : CHUNK_SIZE;
-        ssize_t n = recv(client_sock, buffer, to_read, 0); // Dùng recv thường, không dùng recv_all ở đây để linh hoạt
-        
-        if (n <= 0) break; // Lỗi hoặc đóng kết nối
-
+        ssize_t n = recv(client_sock, buffer, to_read, 0);
+        if (n <= 0) break; // Error or disconnect
         fwrite(buffer, 1, n, fp);
-        total_received += n;
         remaining -= n;
+        total_received += n;
     }
-
     fclose(fp);
-    printf("[Server] Saved file to %s. Total received: %ld bytes\n", filepath, total_received);
+
+    // 4. Send Success/Fail
+    if (total_received == filesize) {
+        char succ_msg[64];
+        snprintf(succ_msg, sizeof(succ_msg), "%d Upload success\n", RES_SUCCESS);
+        perform_send_and_log(client_sock, "UPLOAD_DATA_STREAM", succ_msg);
+    } else {
+        char fail_msg[64];
+        snprintf(fail_msg, sizeof(fail_msg), "%d Upload failed\n", RES_UPLOAD_FAILED);
+        perform_send_and_log(client_sock, "UPLOAD_DATA_STREAM", fail_msg);
+    }
 }
 
+// --- Client Thread ---
 void* client_thread(void* arg) {
     int client_sock = *(int*)arg;
-    free(arg); // Giải phóng vùng nhớ con trỏ arg đã malloc bên server.c (nếu có)
+    free(arg);
+    pthread_detach(pthread_self());
 
-    printf("[Server] Client handler thread started for socket %d\n", client_sock);
+    printf("[Server] Client connected: socket %d\n", client_sock);
 
-    msg_header_t header;
+    MYSQL *conn = db_connect();
+    if (!conn) {
+        const char *msg = "500 DB Error\n";
+        send_all(client_sock, msg, strlen(msg));
+        close(client_sock);
+        return NULL;
+    }
+
+    char current_user[128] = {0};
+    int current_user_id = -1;
+    char buffer[4096];
+
     while (1) {
-        // 1. Nhận Header
-        ssize_t n = recv_all(client_sock, &header, sizeof(header));
-        if (n <= 0) {
-            printf("[Server] Client disconnected or error.\n");
-            break;
+        memset(buffer, 0, sizeof(buffer));
+        ssize_t n = recv(client_sock, buffer, sizeof(buffer)-1, 0);
+        if (n <= 0) break;
+
+        // Make a copy for logging before any modification
+        char raw_cmd_log[4096];
+        strncpy(raw_cmd_log, buffer, sizeof(raw_cmd_log)-1);
+        raw_cmd_log[sizeof(raw_cmd_log)-1] = '\0';
+
+        // Naive line splitting
+        char *newline = strchr(buffer, '\n');
+        if (newline) *newline = '\0';
+        if (buffer[strlen(buffer)-1] == '\r') buffer[strlen(buffer)-1] = '\0';
+
+        char cmd[32] = {0};
+        char arg1[128] = {0};
+        char arg2[128] = {0};
+        
+        sscanf(buffer, "%s", cmd);
+
+        if (strcmp(cmd, STR_REGISTER) == 0) {
+             sscanf(buffer, "%*s %s %s", arg1, arg2);
+             if (current_user_id != -1) {
+                 perform_send_and_log(client_sock, raw_cmd_log, "409 Already logged in\n");
+             } else {
+                 char hash[512];
+                 utils_hash_password(arg2, hash, sizeof(hash));
+                 int r = db_create_user(conn, arg1, hash);
+                 if (r == 0) perform_send_and_log(client_sock, raw_cmd_log, "201 Register success\n");
+                 else if (r == 1) perform_send_and_log(client_sock, raw_cmd_log, "409 User exists\n");
+                 else perform_send_and_log(client_sock, raw_cmd_log, "500 Register error\n");
+             }
+        } 
+        else if (strcmp(cmd, STR_LOGIN) == 0) {
+            sscanf(buffer, "%*s %s %s", arg1, arg2);
+            if (current_user_id != -1) {
+                perform_send_and_log(client_sock, raw_cmd_log, "409 Already logged in\n");
+            } else {
+                int res = db_verify_user(conn, arg1, arg2);
+                if (res == 0) { 
+                     if (is_logged_in(arg1)) {
+                         perform_send_and_log(client_sock, raw_cmd_log, "409 Already logged in elsewhere\n");
+                     } else {
+                         add_logged_user(arg1);
+                         strncpy(current_user, arg1, 127);
+                         current_user_id = db_get_user_id_by_name(conn, arg1);
+                         perform_send_and_log(client_sock, raw_cmd_log, "110 Login success\n");
+                     }
+                } else {
+                    perform_send_and_log(client_sock, raw_cmd_log, "401 Login failed\n");
+                }
+            }
         }
-
-        // 2. Phân loại lệnh (Switch case)
-        switch (header.cmd) {
-            case CMD_UPLOAD:
-                handle_upload_server(client_sock);
-                break;
-            
-            case CMD_LOGIN:
-                // TODO: Implement login logic (Nhận user/pass -> Query DB)
-                printf("[Server] Login command received.\n");
-                // Consume payload if any logic here
-                break;
-
-            case CMD_REGISTER:
-                // TODO: Implement register logic
-                printf("[Server] Register command received.\n");
-                break;
-
-            default:
-                printf("[Server] Unknown command: %d\n", header.cmd);
-                // Nếu header có length > 0, cần đọc bỏ payload để tránh lỗi protocol
-                // skip_bytes(client_sock, header.length);
-                break;
+        else if (strcmp(cmd, STR_LOGOUT) == 0) {
+            if (current_user_id != -1) {
+                remove_logged_user(current_user);
+                current_user_id = -1;
+                memset(current_user, 0, sizeof(current_user));
+            }
+            perform_send_and_log(client_sock, raw_cmd_log, "202 Logout success\n");
+        }
+        else if (strcmp(cmd, STR_UPLOAD) == 0) {
+            char group_id_str[32], path[256], filename[256], size_str[32];
+            int parsed = sscanf(buffer, "%*s %s %s %s %s", group_id_str, path, filename, size_str);
+            if (parsed == 4) {
+                 handle_upload_request(client_sock, filename, size_str);
+            } else {
+                 perform_send_and_log(client_sock, raw_cmd_log, "400 Bad Request\n");
+            }
+        }
+        else {
+            char response[4096] = {0};
+            if (current_user_id == -1) {
+                perform_send_and_log(client_sock, raw_cmd_log, "403 Login required\n");
+            } else {
+                dispatch_request(conn, current_user_id, buffer, response);
+                strcat(response, "\n"); 
+                perform_send_and_log(client_sock, raw_cmd_log, response);
+            }
         }
     }
 
+    if (current_user_id != -1) {
+        remove_logged_user(current_user);
+    }
+    db_close(conn);
     close(client_sock);
+    printf("[Server] Client disconnected: socket %d\n", client_sock);
     return NULL;
 }
 
-// Cần thêm hàm start_server implementation (socket, bind, listen) nếu server.c chưa làm kỹ
-// Tuy nhiên server.c của bạn có vẻ đã gọi start_server(), hàm này nên nằm ở connection_handler.c
-// Dưới đây là khung sườn cho start_server:
-void start_server() {
+void start_server(int port) {
     int server_fd, new_socket;
     struct sockaddr_in address;
     int opt = 1;
     int addrlen = sizeof(address);
-    int PORT = 8080; // Define port
 
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
         perror("socket failed");
@@ -189,7 +303,7 @@ void start_server() {
 
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
+    address.sin_port = htons(port);
 
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
         perror("bind failed");
@@ -201,7 +315,7 @@ void start_server() {
         exit(EXIT_FAILURE);
     }
 
-    printf("[Server] Listening on port %d...\n", PORT);
+    printf("[Server] Ready to accept connections on port %d...\n", port);
 
     while (1) {
         if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
@@ -209,199 +323,13 @@ void start_server() {
             continue;
         }
 
-        char client_ip[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET, &(client_addr.sin_addr), client_ip, INET_ADDRSTRLEN);
-        printf("[server] Accepted connection from %s:%d\n", client_ip, ntohs(client_addr.sin_port));
-
-        if (pthread_create(&tid, NULL, client_thread, conn_sock) != 0) {
-            perror("Pthread create failed");
-            free(conn_sock);
-        }
-    }
-
-    close(listen_sock);
-}
-
-
-void* client_thread(void* arg) {
-    int client_sock = *(int*)arg;
-    free(arg);
-    pthread_detach(pthread_self());
-
-    printf("[server] Client connected on socket %d\n", client_sock);
-
-    // Open a DB connection for this thread
-    MYSQL *conn = db_connect();
-    if (!conn) {
-        const char *resp = "500 DB connection error\n";
-        send(client_sock, resp, strlen(resp), 0);
-        close(client_sock);
-        printf("[server] Client on socket %d disconnected (db error).\n", client_sock);
-        return NULL;
-    }
-
-    // track current logged-in username for this connection (if any)
-    char current_user[128] = {0};
-
-    // Buffer for accumulating received data and process line-by-line
-    char inbuf[4096];
-    size_t in_len = 0;
-    ssize_t n;
-
-    while (1) {
-        n = recv(client_sock, inbuf + in_len, sizeof(inbuf) - in_len - 1, 0);
-        if (n <= 0) break; // client closed or error
-        in_len += (size_t)n;
-        inbuf[in_len] = '\0';
-
-        // n -> cmd, arg1, arg2
-        
-
-        // process all complete lines
-        char *line_start = inbuf;
-        char *newline;
-        while ((newline = strchr(line_start, '\n')) != NULL) {
-            *newline = '\0';
-            char *line = line_start;
-
-            // Trim CR if present
-            size_t L = strlen(line);
-            if (L > 0 && line[L-1] == '\r') line[L-1] = '\0';
-
-            // Handle command
-            if (strncmp(line, "REGISTER ", 9) == 0) {
-                // If this connection already logged in, disallow creating a new account
-                if (current_user[0] != '\0') {
-                    const char *resp = "409 Already logged in\n";
-                    send(client_sock, resp, strlen(resp), 0);
-                } else {
-                    char *p = line + 9;
-                    char username[128];
-                    char password[128];
-                    if (sscanf(p, "%127s %127s", username, password) == 2) {
-                        char hash_out[512];
-                        if (utils_hash_password(password, hash_out, sizeof(hash_out)) != 0) {
-                            const char *resp = "500 Hash error\n";
-                            send(client_sock, resp, strlen(resp), 0);
-                        } else {
-                            int r = db_create_user(conn, username, hash_out);
-                            if (r == 0) {
-                                const char *resp = "201 Register success\n";
-                                send(client_sock, resp, strlen(resp), 0);
-                            } else if (r == 1) {
-                                const char *resp = "409 User exists\n";
-                                send(client_sock, resp, strlen(resp), 0);
-                            } else {
-                                const char *resp = "500 Register error\n";
-                                send(client_sock, resp, strlen(resp), 0);
-                            }
-                        }
-                    } else {
-                        const char *resp = "400 Bad request\n";
-                        send(client_sock, resp, strlen(resp), 0);
-                    }
-                }
-            } else if (strncmp(line, "LOGIN ", 6) == 0) {
-                char *p = line + 6;
-                char username[128];
-                char password[128];
-                if (sscanf(p, "%127s %127s", username, password) == 2) {
-                    // check credentials
-                    int v = db_verify_user(conn, username, password);
-                    if (v == 0) {
-                        // valid credentials, check already logged in
-                        if (is_logged_in(username)) {
-                            const char *resp = "409 Already logged in\n";
-                            send(client_sock, resp, strlen(resp), 0);
-                        } else {
-                            if (!add_logged_user(username)) {
-                                const char *resp = "500 Login error\n";
-                                send(client_sock, resp, strlen(resp), 0);
-                            } else {
-                                // mark current
-                                strncpy(current_user, username, sizeof(current_user)-1);
-                                const char *resp = "110 Login success\n";
-                                send(client_sock, resp, strlen(resp), 0);
-                            }
-                        }
-                    } else if (v == 1) {
-                        const char *resp = "401 Login failed\n";
-                        send(client_sock, resp, strlen(resp), 0);
-                    } else {
-                        const char *resp = "500 Login error\n";
-                        send(client_sock, resp, strlen(resp), 0);
-                    }
-                } else {
-                    const char *resp = "400 Bad request\n";
-                    send(client_sock, resp, strlen(resp), 0);
-                }
-            } else {
-                const char *resp = "400 Unknown command\n";
-                send(client_sock, resp, strlen(resp), 0);
-            }
-
-            // move to next line
-            line_start = newline + 1;
-        }
-
-        // move leftover to beginning of buffer
-        size_t remaining = strlen(line_start);
-        if (remaining > 0 && line_start != inbuf) {
-            memmove(inbuf, line_start, remaining + 1);
-            in_len = remaining;
-        } else if (line_start == inbuf) {
-            // no complete line found yet
-            if (in_len == sizeof(inbuf)-1) {
-                // buffer full without newline, reset to avoid overflow
-                in_len = 0;
-                inbuf[0] = '\0';
-            }
-        
-        printf("[Server] New connection accepted.\n");
-
-        // Tạo thread cho client mới
-        pthread_t tid;
         int *pclient = malloc(sizeof(int));
         *pclient = new_socket;
-        
+        pthread_t tid;
         if (pthread_create(&tid, NULL, client_thread, pclient) != 0) {
-            perror("pthread_create");
-            free(pclient);
-            close(new_socket);
-        } else {
-            // no leftover
-            in_len = 0;
-            inbuf[0] = '\0';
+             perror("pthread_create");
+             free(pclient);
+             close(new_socket);
         }
     }
-
-    // cleanup logged-in state if necessary
-    if (current_user[0] != '\0') {
-        remove_logged_user(current_user);
-    }
-
-    db_close(conn);
-    close(client_sock);
-    printf("[server] Client on socket %d disconnected.\n", client_sock);
-    return NULL;
-}
-
-void handle_upload(int client_sock) {
-    file_data meta;
-    
-    if (recv_all(client_sock, &meta, sizeof(meta)) <= 0) {
-        printf("[Server] Failed to receive metadata.\n");
-        return;
-    }
-
-    printf("[Server] Receiving file: %s (%lld bytes)\n", meta.filename, meta.filesize);
-
-    struct stat st = {0};
-    if (stat("storage", &st) == -1) {
-        mkdir("storage", 0700);
-    }
-
-    char filepath[512];
-    snprintf(filepath, sizeof(filepath), "storage/%s", meta.filename);
-
 }
