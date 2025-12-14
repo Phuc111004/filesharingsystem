@@ -1,93 +1,129 @@
 #include "client.h"
 #include <stdio.h>
-
-
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 #include <arpa/inet.h>
-#include "../common/protocol.h"
+#include <unistd.h>
+#include "../common/utils.h"
+#include "ui.h"
 
-#define SERVER_IP "127.0.0.1"
-#define SERVER_PORT 5500
 
-void print_menu(); // defined in ui.c
+void run_client(const char *host, int port) {
+	int sockfd;
+	struct sockaddr_in serv_addr;
+	char buffer[1024];
 
-void run_client() {
-    int sock;
-    struct sockaddr_in server_addr;
+	// Create socket
+	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+		perror("socket");
+		return;
+	}
 
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        perror("Socket creation error");
-        return;
-    }
+	memset(&serv_addr, 0, sizeof(serv_addr));
+	serv_addr.sin_family = AF_INET;
+	serv_addr.sin_port = htons(port);
+	if (inet_pton(AF_INET, host, &serv_addr.sin_addr) != 1) {
+		// fallback to inet_addr
+		serv_addr.sin_addr.s_addr = inet_addr(host);
+	}
 
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(SERVER_PORT);
+	if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+		perror("connect");
+		close(sockfd);
+		return;
+	}
 
-    if (inet_pton(AF_INET, SERVER_IP, &server_addr.sin_addr) <= 0) {
-        perror("Invalid address/ Address not supported");
-        return;
-    }
+	printf("Connected to server.\n");
 
-    if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Connection Failed");
-        return;
-    }
+	while (1) {
+		print_menu();
+		printf("Choose option: ");
+		fflush(stdout);
+		int choice = 0;
+		if (scanf("%d", &choice) != 1) {
+			// clear stdin
+			int c; while ((c = getchar()) != '\n' && c != EOF) ;
+			continue;
+		}
+		// consume newline
+		int c; while ((c = getchar()) != '\n' && c != EOF) ;
 
-    printf("Connected to server.\n");
+		if (choice == 1) { // Sign-up
+			char username[128];
+			char password[128];
+			printf("user: ");
+			if (!fgets(username, sizeof(username), stdin)) break;
+			username[strcspn(username, "\r\n")] = 0;
+			printf("password: ");
+			if (!fgets(password, sizeof(password), stdin)) break;
+			password[strcspn(password, "\r\n")] = 0;
 
-    char buffer[1024];
-    // int user_id = 1; // Mock user ID removed as it's unused now
+			// prepare request: REGISTER <user> <pass>\n
+			snprintf(buffer, sizeof(buffer), "REGISTER %s %s\n", username, password);
+			ssize_t sent = send(sockfd, buffer, strlen(buffer), 0);
+			if (sent <= 0) {
+				perror("send");
+				break;
+			}
 
-    while (1) {
-        print_menu();
-        printf("> ");
-        if (fgets(buffer, sizeof(buffer), stdin) == NULL) break;
-        buffer[strcspn(buffer, "\n")] = 0; // remove newline
+			// wait response
+			ssize_t rec = recv(sockfd, buffer, sizeof(buffer)-1, 0);
+			if (rec <= 0) {
+				perror("recv");
+				break;
+			}
+			buffer[rec] = '\0';
+			printf("Server: %s\n", buffer);
+		} else if (choice == 2) { // Login
+			char username[128];
+			char password[128];
+			printf("user: ");
+			if (!fgets(username, sizeof(username), stdin)) break;
+			username[strcspn(username, "\r\n")] = 0;
+			printf("password: ");
+			if (!fgets(password, sizeof(password), stdin)) break;
+			password[strcspn(password, "\r\n")] = 0;
 
-        char cmd[64], arg1[64], arg2[64];
-        int n = sscanf(buffer, "%s %s %s", cmd, arg1, arg2);
+			// prepare request: LOGIN <user> <pass>\n
+			snprintf(buffer, sizeof(buffer), "LOGIN %s %s\n", username, password);
+			ssize_t sent = send(sockfd, buffer, strlen(buffer), 0);
+			if (sent <= 0) {
+				perror("send");
+				break;
+			}
 
-        if (n < 1) continue;
+			// wait response
+			ssize_t rec = recv(sockfd, buffer, sizeof(buffer)-1, 0);
+			if (rec <= 0) {
+				perror("recv");
+				break;
+			}
+			buffer[rec] = '\0';
+			printf("Server: %s\n", buffer);
+		} else if (choice == 0) {
+			printf("Exiting client.\n");
+			break;
+		} else {
+			printf("Option not implemented yet.\n");
+		}
+	}
 
-        char msg[256] = {0};
-
-        if (strcmp(cmd, "join_group") == 0) {
-            // join_group <group_id> -> JOIN_REQ <group_id>
-            sprintf(msg, "JOIN_REQ %s", arg1);
-        } else if (strcmp(cmd, "leave_group") == 0) {
-            // leave_group <group_id> -> LEAVE_GROUP <group_id>
-            sprintf(msg, "LEAVE_GROUP %s", arg1);
-        } else if (strcmp(cmd, "list_requests") == 0) {
-            // list_requests <group_id> -> LIST_REQ <group_id>
-            sprintf(msg, "LIST_REQ %s", arg1);
-        } else if (strcmp(cmd, "approve") == 0) {
-            // approve <req_id> <A/R> -> APPROVE <req_id> <A/R>
-            sprintf(msg, "APPROVE %s %s", arg1, arg2);
-        } else if (strcmp(cmd, "kick") == 0) {
-            // kick <username> <group_id> -> KICK <username> <group_id>
-            sprintf(msg, "KICK %s %s", arg1, arg2);
-        } else if (strcmp(cmd, "invite") == 0) {
-            // invite <username> <group_id> -> INVITE <username> <group_id>
-            sprintf(msg, "INVITE %s %s", arg1, arg2);
-        } else {
-            printf("Unknown command locally. Sending raw...\n");
-            strcpy(msg, buffer);
-        }
-
-        send(sock, msg, strlen(msg), 0);
-        
-        memset(buffer, 0, sizeof(buffer));
-        recv(sock, buffer, sizeof(buffer)-1, 0);
-        printf("Server Response: %s\n", buffer);
-    }
-
-    close(sock);
+	close(sockfd);
 }
 
 
-int main() {
-run_client();
-return 0;
+int main(int argc, char **argv) {
+	const char *host = "127.0.0.1";
+	int port = 5500;
+	if (argc >= 2) host = argv[1];
+	if (argc >= 3) {
+		int p = atoi(argv[2]);
+		if (p > 0) port = p;
+	}
+
+	run_client(host, port);
+	return 0;
 }

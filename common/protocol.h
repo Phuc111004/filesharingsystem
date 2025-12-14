@@ -23,5 +23,10 @@ int cmd; // one of CMD_*
 int length; // payload length in bytes
 } __attribute__((packed)) msg_header_t;
 
+// Thêm struct này để chứa thông tin file
+typedef struct {
+    char filename[256];
+    long long filesize;
+} __attribute__((packed)) file_data;
 
 #endif // PROTOCOL_H
