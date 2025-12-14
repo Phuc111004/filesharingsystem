@@ -296,7 +296,7 @@ void* client_thread(void* arg) {
 void handle_upload(int client_sock) {
     file_data meta;
     
-    if (recv_all(client_sock, &meta, sizeof(meta)) <= 0) {
+    if (recv_exact(client_sock, &meta, sizeof(meta)) <= 0) {
         printf("[Server] Failed to receive metadata.\n");
         return;
     }
@@ -310,5 +310,4 @@ void handle_upload(int client_sock) {
 
     char filepath[512];
     snprintf(filepath, sizeof(filepath), "storage/%s", meta.filename);
-
 }
