@@ -4,7 +4,6 @@
 #include "../database/database.h"
 #include "../database/queries.h"
 #include "handlers/request_dispatcher.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,6 +17,7 @@
 #include <arpa/inet.h>
 
 #define CHUNK_SIZE 4096
+#define AUTH_BUF 512
 
 // --- LOGGED USER LIST MANAGEMENT (Giữ nguyên logic bạn bè) ---
 
@@ -297,106 +297,3 @@ void* client_thread(void* arg) {
                     perform_send_and_log(sock, line, "110 Login success\r\n");
                 }
             } else {
-                perform_send_and_log(sock, line, "401 Login failed\r\n");
-            }
-        } 
-        else if (strcmp(cmd, STR_REGISTER) == 0) {
-            char hash[512];
-            utils_hash_password(arg2, hash, sizeof(hash));
-            int res = db_create_user(conn, arg1, hash);
-            if (res == 0) perform_send_and_log(sock, line, "201 Register success\r\n");
-            else if (res == 1) perform_send_and_log(sock, line, "409 User exists\r\n");
-            else perform_send_and_log(sock, line, "500 Register error\r\n");
-        }
-        else if (strcmp(cmd, STR_LOGOUT) == 0) {
-            if (user_id != -1) {
-                remove_logged_user(current_user);
-                user_id = -1;
-                memset(current_user, 0, sizeof(current_user));
-            }
-            perform_send_and_log(sock, line, "202 Logout success\r\n");
-        }
-        // --- FEATURE COMMANDS ---
-        else if (strcmp(cmd, STR_UPLOAD) == 0) {
-            handle_upload_request(sock, arg1, arg2, arg3);
-        }
-        else {
-            // Commands requiring login
-            if (user_id == -1) {
-                perform_send_and_log(sock, line, "403 Login required\r\n");
-            } else {
-                char resp[4096] = {0};
-                dispatch_request(conn, user_id, line, resp);
-                strcat(resp, "\r\n");
-                perform_send_and_log(sock, line, resp);
-            }
-        }
-    }
-
-    // Cleanup on disconnect
-    if (user_id != -1) remove_logged_user(current_user);
-    db_close(conn);
-    close(sock);
-    return NULL;
-}
-
-/**
- * @function start_server
- * Sets up the TCP server socket and accepts incoming connections.
- * * @param port The port number to listen on
- */
-void start_server(int port) {
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0) {
-        perror("Socket failed");
-        exit(EXIT_FAILURE);
-    }
-
-    struct sockaddr_in address;
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(port);
-    
-    int opt = 1;
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
-        perror("Bind failed");
-        exit(EXIT_FAILURE);
-    }
-
-    if (listen(server_fd, 20) < 0) {
-        perror("Listen failed");
-        exit(EXIT_FAILURE);
-    }
-
-    printf("[Server] Listening on port %d...\n", port);
-
-    // Accept Loop
-    while (1) {
-        struct sockaddr_in client_addr;
-        socklen_t len = sizeof(client_addr);
-        int new_sock = accept(server_fd, (struct sockaddr *)&client_addr, &len);
-        if (new_sock < 0) {
-            perror("Accept error");
-            continue;
-        }
-
-        // Print connection info
-        char client_ip[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
-        printf("New connection: %s:%d\n", client_ip, ntohs(client_addr.sin_port));
-
-        // Create thread
-        pthread_t tid;
-        int *pclient = malloc(sizeof(int));
-        *pclient = new_sock;
-        if (pthread_create(&tid, NULL, client_thread, pclient) != 0) {
-            perror("Thread creation failed");
-            free(pclient);
-            close(new_sock);
-        } else {
-            pthread_detach(tid);
-        }
-    }
-}
