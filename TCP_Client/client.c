@@ -1,4 +1,7 @@
 #include "client.h"
+#include "../common/protocol.h"
+#include "../common/file_utils.h"
+#include "../common/utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,120 +13,125 @@
 #include "../common/utils.h"
 #include "ui.h"
 
+#define SERVER_PORT 8080 // Bạn có thể chuyển vào config nếu muốn
+#define SERVER_IP "127.0.0.1"
+#define CHUNK_SIZE 4096
 
-void run_client(const char *host, int port) {
-	int sockfd;
-	struct sockaddr_in serv_addr;
-	char buffer[1024];
+// Hàm phụ trợ để gửi file (Streaming)
+void handle_upload_client(int sockfd) {
+    char filepath[256];
+    printf("Enter file path to upload: ");
+    scanf("%255s", filepath);
 
-	// Create socket
-	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-		perror("socket");
-		return;
-	}
+    FILE *fp = fopen(filepath, "rb");
+    if (!fp) {
+        perror("Cannot open file");
+        return;
+    }
 
-	memset(&serv_addr, 0, sizeof(serv_addr));
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_port = htons(port);
-	if (inet_pton(AF_INET, host, &serv_addr.sin_addr) != 1) {
-		// fallback to inet_addr
-		serv_addr.sin_addr.s_addr = inet_addr(host);
-	}
+    // 1. Lấy kích thước file
+    fseek(fp, 0, SEEK_END);
+    long filesize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
 
-	if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-		perror("connect");
-		close(sockfd);
-		return;
-	}
+    // 2. Gửi Header báo hiệu lệnh UPLOAD
+    msg_header_t header;
+    header.cmd = CMD_UPLOAD;
+    header.length = 0; // Payload length ban đầu = 0, ta sẽ gửi metadata riêng
+    send_all(sockfd, &header, sizeof(header));
 
-	printf("Connected to server.\n");
+    // 3. Gửi Metadata (Tên file và Kích thước)
+    // Cấu trúc tạm để gửi thông tin file
+    char filename_only[256];
+    // (Logic tách tên file từ đường dẫn đơn giản)
+    char *p = strrchr(filepath, '/');
+    strcpy(filename_only, p ? p + 1 : filepath);
 
-	while (1) {
-		print_menu();
-		printf("Choose option: ");
-		fflush(stdout);
-		int choice = 0;
-		if (scanf("%d", &choice) != 1) {
-			// clear stdin
-			int c; while ((c = getchar()) != '\n' && c != EOF) ;
-			continue;
-		}
-		// consume newline
-		int c; while ((c = getchar()) != '\n' && c != EOF) ;
+    // Gửi độ dài tên file
+    int name_len = strlen(filename_only);
+    send_all(sockfd, &name_len, sizeof(int));
+    // Gửi tên file
+    send_all(sockfd, filename_only, name_len);
+    // Gửi kích thước file
+    send_all(sockfd, &filesize, sizeof(long));
 
-		if (choice == 1) { // Sign-up
-			char username[128];
-			char password[128];
-			printf("user: ");
-			if (!fgets(username, sizeof(username), stdin)) break;
-			username[strcspn(username, "\r\n")] = 0;
-			printf("password: ");
-			if (!fgets(password, sizeof(password), stdin)) break;
-			password[strcspn(password, "\r\n")] = 0;
+    printf("Uploading %s (%ld bytes)...\n", filename_only, filesize);
 
-			// prepare request: REGISTER <user> <pass>\n
-			snprintf(buffer, sizeof(buffer), "REGISTER %s %s\n", username, password);
-			ssize_t sent = send(sockfd, buffer, strlen(buffer), 0);
-			if (sent <= 0) {
-				perror("send");
-				break;
-			}
+    // 4. Gửi nội dung file theo Chunk (Streaming)
+    char buffer[CHUNK_SIZE];
+    size_t n;
+    long total_sent = 0;
+    while ((n = fread(buffer, 1, CHUNK_SIZE, fp)) > 0) {
+        if (send_all(sockfd, buffer, n) < 0) {
+            printf("Error sending data.\n");
+            break;
+        }
+        total_sent += n;
+        // Hiển thị tiến độ đơn giản
+        // printf("\rSent: %ld%%", (total_sent * 100) / filesize);
+    }
 
-			// wait response
-			ssize_t rec = recv(sockfd, buffer, sizeof(buffer)-1, 0);
-			if (rec <= 0) {
-				perror("recv");
-				break;
-			}
-			buffer[rec] = '\0';
-			printf("Server: %s\n", buffer);
-		} else if (choice == 2) { // Login
-			char username[128];
-			char password[128];
-			printf("user: ");
-			if (!fgets(username, sizeof(username), stdin)) break;
-			username[strcspn(username, "\r\n")] = 0;
-			printf("password: ");
-			if (!fgets(password, sizeof(password), stdin)) break;
-			password[strcspn(password, "\r\n")] = 0;
-
-			// prepare request: LOGIN <user> <pass>\n
-			snprintf(buffer, sizeof(buffer), "LOGIN %s %s\n", username, password);
-			ssize_t sent = send(sockfd, buffer, strlen(buffer), 0);
-			if (sent <= 0) {
-				perror("send");
-				break;
-			}
-
-			// wait response
-			ssize_t rec = recv(sockfd, buffer, sizeof(buffer)-1, 0);
-			if (rec <= 0) {
-				perror("recv");
-				break;
-			}
-			buffer[rec] = '\0';
-			printf("Server: %s\n", buffer);
-		} else if (choice == 0) {
-			printf("Exiting client.\n");
-			break;
-		} else {
-			printf("Option not implemented yet.\n");
-		}
-	}
-
-	close(sockfd);
+    printf("\nUpload complete.\n");
+    fclose(fp);
+    
+    // 5. Đợi Server phản hồi kết quả (OK/FAIL)
+    // (Tùy chọn: Implement recv response từ server ở đây)
 }
 
+void run_client() {
+    int sockfd;
+    struct sockaddr_in serv_addr;
 
-int main(int argc, char **argv) {
-	const char *host = "127.0.0.1";
-	int port = 5500;
-	if (argc >= 2) host = argv[1];
-	if (argc >= 3) {
-		int p = atoi(argv[2]);
-		if (p > 0) port = p;
-	}
+    // 1. Tạo socket
+    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("Socket creation error");
+        return;
+    }
 
-	run_client(host, port);
-	return 0;
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(SERVER_PORT);
+
+    if (inet_pton(AF_INET, SERVER_IP, &serv_addr.sin_addr) <= 0) {
+        perror("Invalid address/ Address not supported");
+        return;
+    }
+
+    // 2. Kết nối
+    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        perror("Connection Failed");
+        return;
+    }
+
+    printf("Connected to server %s:%d\n", SERVER_IP, SERVER_PORT);
+
+    // 3. Vòng lặp chính
+    int choice;
+    while (1) {
+        // Gọi hàm in menu từ ui.c (bạn cần include prototype hoặc extern)
+        // print_menu(); 
+        printf("\n--- MENU ---\n");
+        printf("1. Upload File\n");
+        printf("0. Exit\n");
+        printf("Select: ");
+        
+        if (scanf("%d", &choice) != 1) break;
+
+        switch (choice) {
+            case 1: // Upload
+                handle_upload_client(sockfd);
+                break;
+            case 0:
+                close(sockfd);
+                return;
+            default:
+                printf("Unknown option.\n");
+        }
+    }
+
+    close(sockfd);
+}
+
+int main() {
+    run_client();
+    return 0;
 }

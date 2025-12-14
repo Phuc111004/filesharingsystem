@@ -1,4 +1,8 @@
 #include "connection_handler.h"
+#include "../common/protocol.h"
+#include "../common/file_utils.h"
+#include <stdio.h>
+#include <stdlib.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,7 +15,8 @@
 #include <errno.h>
 #include "handlers/request_dispatcher.h"
 #include <string.h>
-#include <sys/types.h>
+#include <unistd.h>
+#include <pthread.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -63,71 +68,144 @@ static int add_logged_user(const char *username) {
     if (!node) {
         pthread_mutex_unlock(&logged_mutex);
         return 0;
+#include <sys/stat.h> // Để dùng mkdir
+
+#define CHUNK_SIZE 4096
+
+// Hàm xử lý nhận file
+void handle_upload_server(int client_sock) {
+    // 1. Nhận Metadata tương ứng với Client gửi
+    int name_len;
+    if (recv_all(client_sock, &name_len, sizeof(int)) <= 0) return;
+
+    char filename[256];
+    if (recv_all(client_sock, filename, name_len) <= 0) return;
+    filename[name_len] = '\0'; // Null terminate
+
+    long filesize;
+    if (recv_all(client_sock, &filesize, sizeof(long)) <= 0) return;
+
+    printf("[Server] Receiving file: %s (%ld bytes)\n", filename, filesize);
+
+    // Tạo thư mục storage nếu chưa có
+    struct stat st = {0};
+    if (stat("storage", &st) == -1) {
+        mkdir("storage", 0700);
     }
-    strncpy(node->username, username, sizeof(node->username));
-    node->username[sizeof(node->username)-1] = '\0';
-    node->next = logged_head;
-    logged_head = node;
-    pthread_mutex_unlock(&logged_mutex);
-    return 1;
+
+    char filepath[512];
+    snprintf(filepath, sizeof(filepath), "storage/%s", filename);
+
+    FILE *fp = fopen(filepath, "wb");
+    if (!fp) {
+        perror("[Server] Cannot create file");
+        // Cần cơ chế báo lỗi về client, nhưng tạm thời return
+        return;
+    }
+
+    // 2. Nhận Stream nội dung file
+    char buffer[CHUNK_SIZE];
+    long total_received = 0;
+    long remaining = filesize;
+
+    while (remaining > 0) {
+        size_t to_read = (remaining < CHUNK_SIZE) ? remaining : CHUNK_SIZE;
+        ssize_t n = recv(client_sock, buffer, to_read, 0); // Dùng recv thường, không dùng recv_all ở đây để linh hoạt
+        
+        if (n <= 0) break; // Lỗi hoặc đóng kết nối
+
+        fwrite(buffer, 1, n, fp);
+        total_received += n;
+        remaining -= n;
+    }
+
+    fclose(fp);
+    printf("[Server] Saved file to %s. Total received: %ld bytes\n", filepath, total_received);
 }
 
-static void remove_logged_user(const char *username) {
-    if (!username || username[0] == '\0') return;
-    pthread_mutex_lock(&logged_mutex);
-    logged_user_t **p = &logged_head;
-    while (*p) {
-        if (strcmp((*p)->username, username) == 0) {
-            logged_user_t *to_free = *p;
-            *p = to_free->next;
-            free(to_free);
+void* client_thread(void* arg) {
+    int client_sock = *(int*)arg;
+    free(arg); // Giải phóng vùng nhớ con trỏ arg đã malloc bên server.c (nếu có)
+
+    printf("[Server] Client handler thread started for socket %d\n", client_sock);
+
+    msg_header_t header;
+    while (1) {
+        // 1. Nhận Header
+        ssize_t n = recv_all(client_sock, &header, sizeof(header));
+        if (n <= 0) {
+            printf("[Server] Client disconnected or error.\n");
             break;
         }
-        p = &((*p)->next);
+
+        // 2. Phân loại lệnh (Switch case)
+        switch (header.cmd) {
+            case CMD_UPLOAD:
+                handle_upload_server(client_sock);
+                break;
+            
+            case CMD_LOGIN:
+                // TODO: Implement login logic (Nhận user/pass -> Query DB)
+                printf("[Server] Login command received.\n");
+                // Consume payload if any logic here
+                break;
+
+            case CMD_REGISTER:
+                // TODO: Implement register logic
+                printf("[Server] Register command received.\n");
+                break;
+
+            default:
+                printf("[Server] Unknown command: %d\n", header.cmd);
+                // Nếu header có length > 0, cần đọc bỏ payload để tránh lỗi protocol
+                // skip_bytes(client_sock, header.length);
+                break;
+        }
     }
-    pthread_mutex_unlock(&logged_mutex);
+
+    close(client_sock);
+    return NULL;
 }
 
-void start_server(int port) {
-    int listen_sock, *conn_sock;
-    struct sockaddr_in server_addr, client_addr;
-    socklen_t client_addr_len;
-    pthread_t tid;
-
-    if ((listen_sock = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-        perror("Socket creation failed");
-        exit(EXIT_FAILURE);
-    }
-
+// Cần thêm hàm start_server implementation (socket, bind, listen) nếu server.c chưa làm kỹ
+// Tuy nhiên server.c của bạn có vẻ đã gọi start_server(), hàm này nên nằm ở connection_handler.c
+// Dưới đây là khung sườn cho start_server:
+void start_server() {
+    int server_fd, new_socket;
+    struct sockaddr_in address;
     int opt = 1;
-    setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    int addrlen = sizeof(address);
+    int PORT = 8080; // Define port
 
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    server_addr.sin_port = htons(port);
-
-    if (bind(listen_sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
-        perror("Bind failed");
-        close(listen_sock);
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+        perror("socket failed");
         exit(EXIT_FAILURE);
     }
 
-    if (listen(listen_sock, BACKLOG) == -1) {
-        perror("Listen failed");
-        close(listen_sock);
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
+        perror("setsockopt");
         exit(EXIT_FAILURE);
     }
 
-    printf("[server] Server started on port %d. Waiting for connections...\n", port);
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(PORT);
+
+    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+        perror("bind failed");
+        exit(EXIT_FAILURE);
+    }
+
+    if (listen(server_fd, 3) < 0) {
+        perror("listen");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("[Server] Listening on port %d...\n", PORT);
 
     while (1) {
-        client_addr_len = sizeof(client_addr);
-        conn_sock = malloc(sizeof(int));
-        *conn_sock = accept(listen_sock, (struct sockaddr*)&client_addr, &client_addr_len);
-        if (*conn_sock == -1) {
-            perror("Accept failed");
-            free(conn_sock);
+        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
+            perror("accept");
             continue;
         }
 
@@ -278,6 +356,18 @@ void* client_thread(void* arg) {
                 in_len = 0;
                 inbuf[0] = '\0';
             }
+        
+        printf("[Server] New connection accepted.\n");
+
+        // Tạo thread cho client mới
+        pthread_t tid;
+        int *pclient = malloc(sizeof(int));
+        *pclient = new_socket;
+        
+        if (pthread_create(&tid, NULL, client_thread, pclient) != 0) {
+            perror("pthread_create");
+            free(pclient);
+            close(new_socket);
         } else {
             // no leftover
             in_len = 0;
@@ -299,7 +389,7 @@ void* client_thread(void* arg) {
 void handle_upload(int client_sock) {
     file_data meta;
     
-    if (recv_exact(client_sock, &meta, sizeof(meta)) <= 0) {
+    if (recv_all(client_sock, &meta, sizeof(meta)) <= 0) {
         printf("[Server] Failed to receive metadata.\n");
         return;
     }
@@ -313,4 +403,5 @@ void handle_upload(int client_sock) {
 
     char filepath[512];
     snprintf(filepath, sizeof(filepath), "storage/%s", meta.filename);
+
 }
