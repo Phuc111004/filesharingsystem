@@ -123,3 +123,5 @@ Mô tả nhanh các thư mục và file chính để bạn hoặc nhóm dễ n�
   - `db_config.h`: cấu hình DB (host, user, pass, dbname, port). Thay đổi ở đây ảnh hưởng tới `database/db_connect()`.
 
 - `Makefile`: build rules cho `server` và `client`. Hiện giả định môi trường POSIX (Linux/WSL) và phụ thuộc `libmysqlclient`.
+
+---
