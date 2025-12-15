@@ -11,11 +11,9 @@
 #define CMD_DOWNLOAD 6
 #define CMD_LIST_GROUPS 7
 
-
-// message header example
 typedef struct {
-int cmd; // one of CMD_*
-int length; // payload length in bytes
+    int cmd;
+    int length;
 } __attribute__((packed)) msg_header_t;
 
 // Thêm struct này để chứa thông tin file

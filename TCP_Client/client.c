@@ -1,144 +1,117 @@
 #include "client.h"
+#include "../common/protocol.h"
+#include "../common/file_utils.h"
+#include "../common/utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <unistd.h>
-#include "ui.h"
-#include "../common/utils.h"
-#include "../common/protocol.h"
-#include "../common/file_utils.h"
+#include <arpa/inet.h>
+#include <sys/socket.h>
 
-void send_request(int sock, int cmd, void *data, int data_len) {
-    msg_header_t header;
-    header.cmd = htonl(cmd);          
-    header.length = htonl(data_len);  
-    
-    // 1. Gửi Header (8 bytes)
-    send_all(sock, &header, sizeof(header));
-    
-    // 2. Gửi Body (nếu có)
-    if (data_len > 0 && data != NULL) {
-        send_all(sock, data, data_len);
+#define SERVER_PORT 8080
+#define SERVER_IP "127.0.0.1"
+#define CHUNK_SIZE 4096
+
+void handle_upload_client(int sockfd) {
+    char filepath[256];
+    printf("Enter file path to upload: ");
+    scanf("%255s", filepath);
+
+    FILE *fp = fopen(filepath, "rb");
+    if (!fp) {
+        perror("Cannot open file");
+        return;
     }
+
+    fseek(fp, 0, SEEK_END);
+    long filesize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    msg_header_t header;
+    header.cmd = CMD_UPLOAD;
+    header.length = 0;
+    send_all(sockfd, &header, sizeof(header));
+
+    char filename_only[256];
+    char *p = strrchr(filepath, '/');
+    if (p != NULL) {
+        strcpy(filename_only, p + 1);
+    } else {
+        strcpy(filename_only, filepath);
+    }
+
+    int name_len = strlen(filename_only);
+    send_all(sockfd, &name_len, sizeof(int));
+    send_all(sockfd, filename_only, name_len);
+    send_all(sockfd, &filesize, sizeof(long));
+
+    printf("Uploading %s (%ld bytes)...\n", filename_only, filesize);
+
+    char buffer[CHUNK_SIZE];
+    size_t n;
+    long total_sent = 0;
+    while ((n = fread(buffer, 1, CHUNK_SIZE, fp)) > 0) {
+        if (send_all(sockfd, buffer, n) < 0) {
+            printf("Error sending data.\n");
+            break;
+        }
+        total_sent += n;
+    }
+
+    printf("\nUpload complete.\n");
+    fclose(fp);
 }
 
-void run_client(const char *host, int port) {
-	int sockfd;
-	struct sockaddr_in serv_addr;
-	char buffer[1024];
+void run_client() {
+    int sockfd;
+    struct sockaddr_in serv_addr;
 
-	// Create socket
-	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-		perror("socket");
-		return;
-	}
+    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("Socket creation error");
+        return;
+    }
 
-	memset(&serv_addr, 0, sizeof(serv_addr));
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_port = htons(port);
-	if (inet_pton(AF_INET, host, &serv_addr.sin_addr) != 1) {
-		// fallback to inet_addr
-		serv_addr.sin_addr.s_addr = inet_addr(host);
-	}
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(SERVER_PORT);
 
-	if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-		perror("connect");
-		close(sockfd);
-		return;
-	}
+    if (inet_pton(AF_INET, SERVER_IP, &serv_addr.sin_addr) <= 0) {
+        perror("Invalid address/ Address not supported");
+        return;
+    }
 
-	printf("Connected to server.\n");
+    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        perror("Connection Failed");
+        return;
+    }
 
-	while (1) {
-		print_menu();
-		printf("Choose option: ");
-		fflush(stdout);
-		int choice = 0;
-		if (scanf("%d", &choice) != 1) {
-			// clear stdin
-			int c; while ((c = getchar()) != '\n' && c != EOF) ;
-			continue;
-		}
-		// consume newline
-		int c; while ((c = getchar()) != '\n' && c != EOF) ;
+    printf("Connected to server %s:%d\n", SERVER_IP, SERVER_PORT);
 
-		if (choice == 1) { // Sign-up
-			char username[128];
-			char password[128];
-			printf("user: ");
-			if (!fgets(username, sizeof(username), stdin)) break;
-			username[strcspn(username, "\r\n")] = 0;
-			printf("password: ");
-			if (!fgets(password, sizeof(password), stdin)) break;
-			password[strcspn(password, "\r\n")] = 0;
+    int choice;
+    while (1) {
+        printf("\n--- MENU ---\n");
+        printf("1. Upload File\n");
+        printf("0. Exit\n");
+        printf("Select: ");
 
-			// prepare request: REGISTER <user> <pass>\n
-			snprintf(buffer, sizeof(buffer), "REGISTER %s %s\n", username, password);
-			ssize_t sent = send(sockfd, buffer, strlen(buffer), 0);
-			if (sent <= 0) {
-				perror("send");
-				break;
-			}
+        if (scanf("%d", &choice) != 1) break;
 
-			// wait response
-			ssize_t rec = recv(sockfd, buffer, sizeof(buffer)-1, 0);
-			if (rec <= 0) {
-				perror("recv");
-				break;
-			}
-			buffer[rec] = '\0';
-			printf("Server: %s\n", buffer);
-		} else if (choice == 2) { // Login
-			char username[128];
-			char password[128];
-			printf("user: ");
-			if (!fgets(username, sizeof(username), stdin)) break;
-			username[strcspn(username, "\r\n")] = 0;
-			printf("password: ");
-			if (!fgets(password, sizeof(password), stdin)) break;
-			password[strcspn(password, "\r\n")] = 0;
+        switch (choice) {
+            case 1:
+                handle_upload_client(sockfd);
+                break;
+            case 0:
+                close(sockfd);
+                return;
+            default:
+                printf("Unknown option.\n");
+        }
+    }
 
-			// prepare request: LOGIN <user> <pass>\n
-			snprintf(buffer, sizeof(buffer), "LOGIN %s %s\n", username, password);
-			ssize_t sent = send(sockfd, buffer, strlen(buffer), 0);
-			if (sent <= 0) {
-				perror("send");
-				break;
-			}
-
-			// wait response
-			ssize_t rec = recv(sockfd, buffer, sizeof(buffer)-1, 0);
-			if (rec <= 0) {
-				perror("recv");
-				break;
-			}
-			buffer[rec] = '\0';
-			printf("Server: %s\n", buffer);
-		} else if (choice == 0) {
-			printf("Exiting client.\n");
-			break;
-		} else {
-			printf("Option not implemented yet.\n");
-		}
-	}
-
-	close(sockfd);
+    close(sockfd);
 }
 
-
-int main(int argc, char **argv) {
-	const char *host = "127.0.0.1";
-	int port = 5500;
-	if (argc >= 2) host = argv[1];
-	if (argc >= 3) {
-		int p = atoi(argv[2]);
-		if (p > 0) port = p;
-	}
-
-	run_client(host, port);
-	return 0;
+int main() {
+    run_client();
+    return 0;
 }
