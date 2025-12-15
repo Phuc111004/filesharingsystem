@@ -1,4 +1,4 @@
-#include "request_dispatcher.h"dispatch_request
+#include "request_dispatcher.h"
 #include "group_handlers.h"
 #include "../../database/database.h"
 #include <stdio.h>

@@ -30,7 +30,6 @@ void handle_invite_user(int sockfd) {
     int group_count = parse_ids_from_response(buffer, group_ids, 100, "[ID: ");
     
     if (group_count == 0) {
-        printf("You are not admin of any groups.\n");
         return;
     }
     
@@ -54,6 +53,10 @@ void handle_invite_user(int sockfd) {
     buffer[n] = '\0';
     
     printf("\nAvailable Users to Invite:\n%s\n", buffer);
+    
+    if (strstr(buffer, "All users are already members") != NULL) {
+        return;
+    }
     
     // Enter username to invite
     printf("Enter username to invite: ");
@@ -90,7 +93,6 @@ void handle_kick_member(int sockfd) {
     int group_count = parse_ids_from_response(buffer, group_ids, 100, "[ID: ");
     
     if (group_count == 0) {
-        printf("You are not admin of any groups.\n");
         return;
     }
     

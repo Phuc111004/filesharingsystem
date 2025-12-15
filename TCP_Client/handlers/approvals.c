@@ -30,7 +30,6 @@ void handle_approve_request(int sockfd) {
     int req_count = parse_ids_from_response(buffer, req_ids, 100, "[ReqID: ");
     
     if (req_count == 0) {
-        printf("No pending requests.\n");
         return;
     }
     
@@ -80,7 +79,6 @@ void handle_accept_invitation(int sockfd) {
     int inv_count = parse_ids_from_response(buffer, inv_ids, 100, "[InvID: ");
     
     if (inv_count == 0) {
-        printf("No pending invitations.\n");
         return;
     }
     
