@@ -31,6 +31,7 @@ void db_list_non_members(MYSQL* conn, int group_id, char* buffer, size_t size);
 void db_list_group_members(MYSQL* conn, int group_id, char* buffer, size_t size);
 void db_list_join_requests_for_admin(MYSQL* conn, int user_id, char* buffer, size_t size);
 void db_list_invitations_for_user(MYSQL* conn, int user_id, char* buffer, size_t size);
+void db_list_joinable_groups(MYSQL* conn, int user_id, char* buffer, size_t size);
 
 
 #endif // DATABASE_H

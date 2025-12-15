@@ -1,6 +1,5 @@
 #include <stdio.h>
 
-
 // small CLI helper functions
 void print_menu() {
 	printf("\n--- MENU ---\n");

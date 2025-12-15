@@ -369,3 +369,38 @@ void db_list_invitations_for_user(MYSQL* conn, int user_id, char* buffer, size_t
     if (count == 0) strcpy(buffer, "No pending invitations.");
     mysql_free_result(res);
 }
+
+void db_list_joinable_groups(MYSQL* conn, int user_id, char* buffer, size_t size) {
+    char query[1024];
+    snprintf(query, sizeof(query),
+        "SELECT g.group_id, g.group_name, u.username "
+        "FROM `groups` g "
+        "JOIN users u ON g.created_by = u.user_id "
+        "WHERE g.group_id NOT IN (SELECT group_id FROM user_groups WHERE user_id = %d) "
+        "ORDER BY g.group_id", user_id);
+    
+    if (mysql_query(conn, query)) {
+        snprintf(buffer, size, "Error querying joinable groups.");
+        return;
+    }
+    
+    MYSQL_RES *res = mysql_store_result(conn);
+    MYSQL_ROW row;
+    
+    strcpy(buffer, "");
+    int count = 0;
+    while ((row = mysql_fetch_row(res))) {
+        char line[256];
+        count++;
+        // Format: [num] GroupName (Admin: username) [ID: group_id]
+        snprintf(line, sizeof(line), "[%d] %s (Admin: %s) [ID: %s]\n", 
+                 count, row[1], row[2], row[0]);
+        strncat(buffer, line, size - strlen(buffer) - 1);
+    }
+    
+    if (count == 0) {
+        strcpy(buffer, "No joinable groups available.");
+    }
+    
+    mysql_free_result(res);
+}
