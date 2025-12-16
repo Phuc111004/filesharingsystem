@@ -5,7 +5,7 @@
 #include <sys/types.h>
 
 
-ssize_t send_all(int sockfd, void* buf, size_t len);
+ssize_t send_all(int sockfd, const void* buf, size_t len);
 ssize_t recv_all(int sockfd, void* buf, size_t len);
 
 
