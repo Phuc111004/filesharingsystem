@@ -49,10 +49,4 @@
 #define RES_SERVER_ERROR 500
 #define RES_UPLOAD_FAILED 500
 
-// --- STRUCTS (Optional use, since logic is text-based mainly) ---
-typedef struct {
-    char filename[256];
-    long long filesize;
-} __attribute__((packed)) file_data;
-
 #endif // PROTOCOL_H
