@@ -231,7 +231,11 @@ void handle_upload_request(int client_sock, const char *folder, const char *file
     int error = 0;
 
     while (received < filesize) {
-        size_t to_read = (filesize - received < CHUNK_SIZE) ? (filesize - received) : CHUNK_SIZE;
+        size_t to_read = CHUNK_SIZE;
+
+        if (filesize - received < CHUNK_SIZE) {
+            to_read = (size_t)(filesize - received);
+        }
         ssize_t n = recv(client_sock, buffer, to_read, 0);
         if (n <= 0) {
             error = 1;

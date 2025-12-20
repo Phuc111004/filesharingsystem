@@ -188,8 +188,7 @@ void run_client() {
     int choice;
     while (1) {
         printf("\n--- FILE SHARING CLIENT ---\n");
-        printf("1. Upload File\n");
-        printf("0. Exit\n");
+        print_menu();
         printf("Select: ");
 
         if (scanf("%d", &choice) != 1) {

@@ -16,5 +16,5 @@ void print_menu() {
 	printf("11. Kick Member\n");
 	printf("12. Leave Group\n");
 	printf("13. Logout\n");
-	printf("0. Exit\n");
+	printf("14. Exit\n");
 }
