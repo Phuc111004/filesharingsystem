@@ -139,13 +139,11 @@ void perform_send_and_log(int sock, const char* raw_cmd, const char* resp) {
     send(sock, resp, strlen(resp), 0);
 }
 
-// --- HELPER FUNCTIONS ---
-
 /**
  * @function recv_line
  * Helper to receive a line from socket.
  */
-static int recv_line(int sockfd, char *buf, size_t maxlen) {
+int recv_line(int sockfd, char *buf, size_t maxlen) {
     size_t i = 0;
     while (i < maxlen - 1) {
         char c;
@@ -158,21 +156,30 @@ static int recv_line(int sockfd, char *buf, size_t maxlen) {
 }
 
 /**
- * @function mkdir_p_simple
- * Creates a directory path recursively (like mkdir -p).
+ * @function mkdir_p
+ * Creates a directory path recursively.
+ * Example: "storage/data/img" -> creates "storage", then "storage/data", then "storage/data/img"
  * * @param path The directory path to create
  */
-static void mkdir_p_simple(const char *path) {
-    char tmp[1024];
-    snprintf(tmp, sizeof(tmp), "%s", path);
-    for (char *p = tmp + 1; *p; p++) {
-        if (*p == '/') {
-            *p = '\0';
-            mkdir(tmp, 0700);
-            *p = '/';
+ // tạo thư mục để người dùng upload file lên
+void mkdir_p(const char *path) {
+    char temp[1024];
+    snprintf(temp, sizeof(temp), "%s", path);
+    //ghi path vào mảng temp dưới dạng chuỗi, giới hạn kích thước không vượt quá kích thước mảng temp
+    
+    size_t len = strlen(temp);
+
+    // Duyệt qua từng ký tự của đường dẫn
+    for (int i = 0; i < len; i++) {
+        // Nếu gặp dấu gạch chéo '/', tức là đã đi hết một cấp thư mục
+        if (temp[i] == '/') {
+            temp[i] = '\0';         // Cắt chuỗi tại đây (thay '/' bằng NULL)
+            mkdir(temp, 0700);      // Tạo thư mục cha này (nếu chưa có)
+            temp[i] = '/';          // Trả lại dấu '/' để đi tiếp
         }
     }
-    mkdir(tmp, 0700);
+    
+    mkdir(temp, 0700);
 }
 
 /**
@@ -183,6 +190,7 @@ static void mkdir_p_simple(const char *path) {
  * @param filename Name of the file
  * @param size_str File size as string
  */
+ //Hàm này là hàm phía server, dùng để xử lý một lệnh UPLOAD từ client:
 void handle_upload_request(int client_sock, const char *folder, const char *filename, const char *size_str) {
     long long filesize = atoll(size_str);
     if (filesize < 0) {
@@ -192,15 +200,17 @@ void handle_upload_request(int client_sock, const char *folder, const char *file
 
     char log_info[1024];
     snprintf(log_info, sizeof(log_info), "UPLOAD %s %s %lld", folder, filename, filesize);
+    // (?) tại sao cần ghi log_info ở đây
 
     // 1. Prepare Storage Path
     char storage_path[1024];
+    //tạo đường dẫn thư mục lưu file 
     if (!folder || strcmp(folder, ".") == 0 || strlen(folder) == 0) {
         snprintf(storage_path, sizeof(storage_path), "storage");
     } else {
         snprintf(storage_path, sizeof(storage_path), "storage/%s", folder);
     }
-    mkdir_p_simple(storage_path); // Ensure directory exists
+    mkdir_p(storage_path);
 
     char full_path[1024];
     snprintf(full_path, sizeof(full_path), "%s/%s", storage_path, filename);
@@ -216,6 +226,7 @@ void handle_upload_request(int client_sock, const char *folder, const char *file
 
     // 3. Receive Data Loop
     char buffer[CHUNK_SIZE];
+    //đọc từng khối dữ liệu trong file để upload 
     long long received = 0;
     int error = 0;
 
