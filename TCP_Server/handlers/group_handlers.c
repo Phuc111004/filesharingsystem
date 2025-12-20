@@ -41,9 +41,9 @@ void handle_list_pending_req(MYSQL *db, int current_user_id, const char *arg1, c
     if (!db_is_group_admin(db, current_user_id, group_id)) {
         snprintf(response, RESPONSE_SIZE, "403 Forbidden");
     } else {
-        char temp[4096];
+        char temp[3500];
         db_list_pending_requests(db, current_user_id, temp, sizeof(temp));
-        sprintf(response, "100 Requests:\n%s", temp);
+        snprintf(response, RESPONSE_SIZE, "100 Requests: %s", temp);
     }
 }
 

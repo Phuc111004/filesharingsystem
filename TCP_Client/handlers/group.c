@@ -9,14 +9,14 @@
 
 // Handler for Join Group (Case 7)
 void handle_join_group(int sockfd) {
-    char buffer[4096];
+    char buffer[16384];
     
     // Request list of groups
     snprintf(buffer, sizeof(buffer), "LIST_JOINABLE_GROUPS\n");
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    ssize_t n = recv(sockfd, buffer, sizeof(buffer)-1, 0);
+    ssize_t n = recv_line(sockfd, buffer, sizeof(buffer));
     if (n <= 0) {
         printf("Server disconnected.\n");
         return;
@@ -25,13 +25,16 @@ void handle_join_group(int sockfd) {
     
     // Display groups
     printf("\nAvailable Groups:\n%s\n", buffer);
+
+    if (strstr(buffer, "No joinable groups available.") != NULL) {
+        return;
+    }
     
     // Parse group IDs
     int group_ids[100];
     int group_count = parse_ids_from_response(buffer, group_ids, 100, "[ID: ");
-    
-    if (group_count == 0) {
-        printf("No groups available to join.\n");
+
+    if (group_count <= 0) {
         return;
     }
     
