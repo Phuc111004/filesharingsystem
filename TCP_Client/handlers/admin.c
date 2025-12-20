@@ -16,7 +16,7 @@ void handle_invite_user(int sockfd) {
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    ssize_t n = recv(sockfd, buffer, sizeof(buffer)-1, 0);
+    ssize_t n = recv(sockfd, buffer, sizeof(buffer)-1, 0); // Xu ly truyen dong 
     if (n <= 0) {
         printf("Server disconnected.\n");
         return;
@@ -27,7 +27,7 @@ void handle_invite_user(int sockfd) {
     
     // Parse group IDs
     int group_ids[100];
-    int group_count = parse_ids_from_response(buffer, group_ids, 100, "[ID: ");
+    int group_count = parse_ids_from_response(buffer, group_ids, 100, "[ID: "); // Module hoa nho hon 
     
     if (group_count == 0) {
         return;

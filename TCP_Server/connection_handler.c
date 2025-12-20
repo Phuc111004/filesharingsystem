@@ -198,12 +198,10 @@ void* client_thread(void* arg) {
         ssize_t n = recv(client_sock, buffer, sizeof(buffer)-1, 0);
         if (n <= 0) break;
 
-        // Make a copy for logging before any modification
         char raw_cmd_log[4096];
         strncpy(raw_cmd_log, buffer, sizeof(raw_cmd_log)-1);
         raw_cmd_log[sizeof(raw_cmd_log)-1] = '\0';
 
-        // Naive line splitting
         char *newline = strchr(buffer, '\n');
         if (newline) *newline = '\0';
         if (buffer[strlen(buffer)-1] == '\r') buffer[strlen(buffer)-1] = '\0';

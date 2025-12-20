@@ -70,7 +70,7 @@ void run_client() {
 
             case 3:  // Upload
                 handle_upload(sockfd);
-                break;
+                brea.k;
 
             case 4:  // Create Group
                 printf("Feature under development\n");
