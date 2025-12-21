@@ -177,7 +177,7 @@ void run_client() {
                 break;
 
             case 4:  // Create Group
-                printf("Feature under development\n");
+                handle_create_group(sockfd);
                 break;
 
             case 5:  // List Groups
@@ -216,7 +216,7 @@ void run_client() {
                 handle_logout(sockfd);
                 break;
 
-            case 0:  // Exit
+            case 14: // Exit
                 close(sockfd);
                 return;
 
