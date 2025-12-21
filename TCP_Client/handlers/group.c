@@ -7,6 +7,26 @@
 #include <string.h>
 #include <sys/socket.h>
 
+// Handler for Create Group (Case 4)
+void handle_create_group(int sockfd) {
+    char buffer[4096];
+    char group_name[128];
+
+    printf("Group name: ");
+    if (scanf("%127s", group_name) != 1) {
+        printf("Invalid group name.\n");
+        while (getchar() != '\n' && getchar() != EOF) {} // clear stdin
+        return;
+    }
+
+    snprintf(buffer, sizeof(buffer), "CREATE_GROUP %s\n", group_name);
+    send_all(sockfd, buffer, strlen(buffer));
+
+    memset(buffer, 0, sizeof(buffer));
+    recv_line(sockfd, buffer, sizeof(buffer));
+    printf("Server: %s", buffer);
+}
+
 // Handler for Join Group (Case 7)
 void handle_join_group(int sockfd) {
     char buffer[16384];

@@ -1,6 +1,8 @@
 # Ignore compiled binaries
 server
 client
+storage/*
+!storage/.gitkeep
 
 # Object files, executables
 *.o

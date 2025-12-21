@@ -6,6 +6,7 @@
 
 
 void start_server(int port);
+void start_server(int port);
 void* client_thread(void* arg);
 
 
