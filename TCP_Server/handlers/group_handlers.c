@@ -24,8 +24,8 @@ void handle_leave_group(MYSQL *db, int current_user_id, const char *arg1, char *
     if (!db_check_group_exists(db, group_id)) {
         snprintf(response, RESPONSE_SIZE, "404 Group not found");
     } else {
-        // Check if admin? (Optional requirement: Leader cannot leave? Or just leaves?)
-        // Prompt said: "Trưởng nhóm không thể rời nhóm" -> 403 Forbidden
+        // Check if admin?
+        // "Trưởng nhóm không thể rời nhóm" -> 403 Forbidden
         if (db_is_group_admin(db, current_user_id, group_id)) {
             snprintf(response, RESPONSE_SIZE, "403 Forbidden (Leader cannot leave)");
         } else {
@@ -41,14 +41,9 @@ void handle_list_pending_req(MYSQL *db, int current_user_id, const char *arg1, c
     if (!db_is_group_admin(db, current_user_id, group_id)) {
         snprintf(response, RESPONSE_SIZE, "403 Forbidden");
     } else {
-        // Reuse db_list_pending_requests but filter by group? 
-        // Existing function lists ALL requests for user. 
-        // Let's just use the existing one for demo simplicity or modify it.
-        // The prompt implies listing requests FOR A GROUP.
-        // For now, let's just dump what we have.
-        char temp[4096];
+        char temp[3500];
         db_list_pending_requests(db, current_user_id, temp, sizeof(temp));
-        sprintf(response, "100 Requests:\n%s", temp);
+        snprintf(response, RESPONSE_SIZE, "100 Requests: %s", temp);
     }
 }
 
