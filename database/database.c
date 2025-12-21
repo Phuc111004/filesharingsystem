@@ -124,19 +124,23 @@ void db_list_pending_requests(MYSQL* conn, int user_id, char* buffer, size_t siz
     MYSQL_RES *res = mysql_store_result(conn);
     MYSQL_ROW row;
     
-    strcpy(buffer, "Pending Requests:\n");
+    strcpy(buffer, "");
+    int first = 1;
     while ((row = mysql_fetch_row(res))) {
+        if (!first) strncat(buffer, " | ", size - strlen(buffer) - 1);
         char line[256];
         // request_id | group_id | group_name | username | type
         if (strcmp(row[4], "join_request") == 0) {
-            snprintf(line, sizeof(line), "[ID: %s] User '%s' wants to join Group '%s' (ID: %s)\n", 
+            snprintf(line, sizeof(line), "[ID: %s] User '%s' wants to join Group '%s' (ID: %s)", 
                      row[0], row[3], row[2], row[1]);
         } else {
-            snprintf(line, sizeof(line), "[ID: %s] You are invited to Group '%s' (ID: %s)\n", 
+            snprintf(line, sizeof(line), "[ID: %s] You are invited to Group '%s' (ID: %s)", 
                      row[0], row[2], row[1]);
         }
         strncat(buffer, line, size - strlen(buffer) - 1);
+        first = 0;
     }
+    if (first) strcpy(buffer, "No pending requests.");
     mysql_free_result(res);
 }
 
@@ -194,10 +198,11 @@ void db_list_all_groups(MYSQL* conn, char* buffer, size_t size) {
     strcpy(buffer, "");
     int count = 0;
     while ((row = mysql_fetch_row(res))) {
+        if (count > 0) strncat(buffer, " | ", size - strlen(buffer) - 1);
         char line[256];
         count++;
         // Format: [num] GroupName (Admin: username) [ID: group_id]
-        snprintf(line, sizeof(line), "[%d] %s (Admin: %s) [ID: %s]\n", 
+        snprintf(line, sizeof(line), "[%d] %s (Admin: %s) [ID: %s]", 
                  count, row[1], row[2], row[0]);
         strncat(buffer, line, size - strlen(buffer) - 1);
     }
@@ -231,9 +236,10 @@ void db_list_admin_groups(MYSQL* conn, int user_id, char* buffer, size_t size) {
     strcpy(buffer, "");
     int count = 0;
     while ((row = mysql_fetch_row(res))) {
+        if (count > 0) strncat(buffer, " | ", size - strlen(buffer) - 1);
         char line[256];
         count++;
-        snprintf(line, sizeof(line), "[%d] %s [ID: %s]\n", count, row[1], row[0]);
+        snprintf(line, sizeof(line), "[%d] %s [ID: %s]", count, row[1], row[0]);
         strncat(buffer, line, size - strlen(buffer) - 1);
     }
     
@@ -262,9 +268,10 @@ void db_list_non_members(MYSQL* conn, int group_id, char* buffer, size_t size) {
     strcpy(buffer, "");
     int count = 0;
     while ((row = mysql_fetch_row(res))) {
+        if (count > 0) strncat(buffer, " | ", size - strlen(buffer) - 1);
         char line[128];
         count++;
-        snprintf(line, sizeof(line), "[%d] %s\n", count, row[1]);
+        snprintf(line, sizeof(line), "[%d] %s", count, row[1]);
         strncat(buffer, line, size - strlen(buffer) - 1);
     }
     
@@ -292,9 +299,10 @@ void db_list_group_members(MYSQL* conn, int group_id, char* buffer, size_t size)
     strcpy(buffer, "");
     int count = 0;
     while ((row = mysql_fetch_row(res))) {
+        if (count > 0) strncat(buffer, " | ", size - strlen(buffer) - 1);
         char line[128];
         count++;
-        snprintf(line, sizeof(line), "[%d] %s\n", count, row[0]);
+        snprintf(line, sizeof(line), "[%d] %s", count, row[0]);
         strncat(buffer, line, size - strlen(buffer) - 1);
     }
     
@@ -325,9 +333,10 @@ void db_list_join_requests_for_admin(MYSQL* conn, int user_id, char* buffer, siz
     strcpy(buffer, "");
     int count = 0;
     while ((row = mysql_fetch_row(res))) {
+        if (count > 0) strncat(buffer, " | ", size - strlen(buffer) - 1);
         char line[256];
         count++;
-        snprintf(line, sizeof(line), "[%d] Group: %s | User: %s [ReqID: %s]\n", 
+        snprintf(line, sizeof(line), "[%d] Group: %s | User: %s [ReqID: %s]", 
                  count, row[1], row[2], row[0]);
         strncat(buffer, line, size - strlen(buffer) - 1);
     }
@@ -359,9 +368,10 @@ void db_list_invitations_for_user(MYSQL* conn, int user_id, char* buffer, size_t
     strcpy(buffer, "");
     int count = 0;
     while ((row = mysql_fetch_row(res))) {
+        if (count > 0) strncat(buffer, " | ", size - strlen(buffer) - 1);
         char line[256];
         count++;
-        snprintf(line, sizeof(line), "[%d] Group: %s | Admin: %s [InvID: %s]\n", 
+        snprintf(line, sizeof(line), "[%d] Group: %s | Admin: %s [InvID: %s]", 
                  count, row[1], row[2], row[0]);
         strncat(buffer, line, size - strlen(buffer) - 1);
     }
@@ -390,10 +400,11 @@ void db_list_joinable_groups(MYSQL* conn, int user_id, char* buffer, size_t size
     strcpy(buffer, "");
     int count = 0;
     while ((row = mysql_fetch_row(res))) {
+        if (count > 0) strncat(buffer, " | ", size - strlen(buffer) - 1);
         char line[256];
         count++;
         // Format: [num] GroupName (Admin: username) [ID: group_id]
-        snprintf(line, sizeof(line), "[%d] %s (Admin: %s) [ID: %s]\n", 
+        snprintf(line, sizeof(line), "[%d] %s (Admin: %s) [ID: %s]", 
                  count, row[1], row[2], row[0]);
         strncat(buffer, line, size - strlen(buffer) - 1);
     }

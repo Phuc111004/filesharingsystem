@@ -2,6 +2,7 @@
 #include "../common/protocol.h"
 #include "../common/file_utils.h"
 #include "../common/utils.h"
+#include "handlers/handlers.h"
 #include "ui.h"
 
 #include <stdio.h>
@@ -23,41 +24,7 @@
  *
  * @param s The string to trim
  */
-static void trim_newline(char *s) {
-    if (!s) return;
-    size_t len = strlen(s);
-    while (len > 0 && (s[len - 1] == '\n' || s[len - 1] == '\r')) {
-        s[len - 1] = '\0';
-        len--;
-    }
-}
-
-/**
- * @function recv_line
- * Receives a single line of text from the socket.
- *
- * @param sockfd Socket file descriptor
- * @param buf Buffer to store the received line
- * @param maxlen Maximum size of the buffer
- * @return int
- * - Number of bytes received on success
- * - -1 on failure or error
- */
-static int recv_line(int sockfd, char *buf, size_t maxlen) {
-    if (!buf || maxlen == 0) return -1;
-    size_t i = 0;
-    while (i < maxlen - 1) {
-        char c;
-        ssize_t n = recv(sockfd, &c, 1, 0);
-        if (n <= 0) break; // Error or Connection closed
-        
-        buf[i++] = c;
-        if (c == '\n') break;
-    }
-    buf[i] = '\0';
-    trim_newline(buf); // Clean up \r\n immediately
-    return (int)i;
-}
+#include "handlers/client_utils.h"
 
 /**
  * @function get_filename
@@ -197,11 +164,68 @@ void run_client() {
         }
 
         switch (choice) {
-            case 1: handle_upload_client(sockfd); break;
-            case 0: close(sockfd); return;
-            default: printf("Invalid option.\n");
+            case 1:  // Login
+                handle_login(sockfd);
+                break;
+
+            case 2:  // Register
+                handle_register(sockfd);
+                break;
+
+            case 3:  // Upload
+                handle_upload_client(sockfd);
+                break;
+
+            case 4:  // Create Group
+                printf("Feature under development\n");
+                break;
+
+            case 5:  // List Groups
+                printf("Feature under development\n");
+                break;
+
+            case 6:  // List Members
+                printf("Feature under development\n");
+                break;
+
+            case 7:  // Join Group
+                handle_join_group(sockfd);
+                break;
+
+            case 8:  // Invite User
+                handle_invite_user(sockfd);
+                break;
+
+            case 9:  // Approve Request
+                handle_approve_request(sockfd);
+                break;
+
+            case 10: // Accept Invitation
+                handle_accept_invitation(sockfd);
+                break;
+
+            case 11: // Kick Member
+                handle_kick_member(sockfd);
+                break;
+
+            case 12: // Leave Group
+                handle_leave_group(sockfd);
+                break;
+
+            case 13: // Logout
+                handle_logout(sockfd);
+                break;
+
+            case 0:  // Exit
+                close(sockfd);
+                return;
+
+            default:
+                printf("Unknown option.\n");
         }
     }
+
+    close(sockfd);
 }
 
 /**

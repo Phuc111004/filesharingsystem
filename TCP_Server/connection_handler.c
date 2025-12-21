@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <time.h>
+#include <arpa/inet.h>
 
 #define CHUNK_SIZE 4096
 
@@ -212,7 +213,7 @@ void handle_upload_request(int client_sock, const char *folder, const char *file
     }
     mkdir_p(storage_path);
 
-    char full_path[1024];
+    char full_path[2048];
     snprintf(full_path, sizeof(full_path), "%s/%s", storage_path, filename);
 
     FILE *fp = fopen(full_path, "wb");
