@@ -8,14 +8,14 @@
 #include <sys/socket.h>
 
 int get_selected_admin_group(int sockfd) {
-    char buffer[16384];
+    char buffer[32768];
     
     // Get admin groups
     snprintf(buffer, sizeof(buffer), "LIST_ADMIN_GROUPS\n");
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    ssize_t n = recv_line(sockfd, buffer, sizeof(buffer));
+    int n = recv_multiline(sockfd, buffer, sizeof(buffer));
     if (n <= 0) {
         printf("Server disconnected.\n");
         return -1;

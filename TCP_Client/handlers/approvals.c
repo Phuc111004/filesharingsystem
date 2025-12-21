@@ -9,14 +9,14 @@
 
 // Handler for Approve Request (Case 9)
 void handle_approve_request(int sockfd) {
-    char buffer[16384];
+    char buffer[32768];
     
     // Get pending join requests
     snprintf(buffer, sizeof(buffer), "LIST_JOIN_REQUESTS\n");
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    ssize_t n = recv_line(sockfd, buffer, sizeof(buffer));
+    int n = recv_multiline(sockfd, buffer, sizeof(buffer));
     if (n <= 0) {
         printf("Server disconnected.\n");
         return;
@@ -58,14 +58,14 @@ void handle_approve_request(int sockfd) {
 
 // Handler for Accept Invitation (Case 10)
 void handle_accept_invitation(int sockfd) {
-    char buffer[16384];
+    char buffer[32768];
     
     // Get pending invitations
     snprintf(buffer, sizeof(buffer), "LIST_MY_INVITATIONS\n");
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    ssize_t n = recv_line(sockfd, buffer, sizeof(buffer));
+    int n = recv_multiline(sockfd, buffer, sizeof(buffer));
     if (n <= 0) {
         printf("Server disconnected.\n");
         return;

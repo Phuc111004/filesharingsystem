@@ -59,3 +59,64 @@ int recv_line(int sockfd, char *buf, size_t maxlen) {
     trim_newline(buf); // Clean up \r\n immediately
     return (int)i;
 }
+
+// Receives lines until an empty line is received, accumulating them into buf.
+// Returns total bytes received or -1 on error.
+int recv_multiline(int sockfd, char *buf, size_t maxlen) {
+    if (!buf || maxlen == 0) return -1;
+    
+    size_t total_len = 0;
+    buf[0] = '\0';
+    
+    char line_buf[4096];
+    while (1) {
+        // Peek at the buffer size safety
+        if (total_len >= maxlen - 1) {
+            printf("Buffer overflow in recv_multiline\n");
+            break; 
+        }
+
+        int n = recv_line(sockfd, line_buf, sizeof(line_buf));
+        if (n < 0) return -1; // Error
+        
+        // If n==0, it could be empty line (after trim) or connection closed
+        // recv_line returns length AFTER trim. 
+        // Logic: if line was "\r\n", recv_line trims to "" and returns 0.
+        // But if connection closed, recv returns 0 or -1. 
+        // We need to differentiate? 
+        // Actually, recv_line in previous step: returns i (length). 
+        // If i=0, it means it hit \n immediately or EOF immediately.
+        // We need a robust empty line check.
+        
+        // Check if line is empty (length 0)
+        // Correct logic depends on how recv_line handles it.
+        // If Server sends "\r\n", recv_line sees '\r' then next is '\n' (or just '\n').
+        // It trims and returns 0.
+        // So length 0 means empty line.
+        
+        // Fix: recv_line returns total bytes READ from socket (e.g., 2 for "\r\n").
+        // We must check if the trimmed string is empty to detect the protocol terminator.
+        size_t line_len = strlen(line_buf);
+        if (line_len == 0) {
+           break; // End of transmission (Empty line received)
+        }
+        
+        if (n == 0) {
+           break; // Connection closed
+        }
+        
+        // Check for space
+        if (total_len + line_len + 2 > maxlen) {
+             printf("Buffer full, truncating...\n");
+             break;
+        }
+
+        // Use memcpy instead of strcpy, but only copy the actual string content (line_len)
+        memcpy(buf + total_len, line_buf, line_len);
+        total_len += line_len;
+        buf[total_len] = '\n';
+        total_len++;
+        buf[total_len] = '\0';
+    }
+    return (int)total_len;
+}

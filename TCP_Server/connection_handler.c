@@ -325,9 +325,12 @@ void* client_thread(void* arg) {
             if (user_id == -1) {
                 perform_send_and_log(sock, line, "403 Login required\r\n");
             } else {
-                char resp[4096] = {0};
-                dispatch_request(conn, user_id, line, resp);
-                strcat(resp, "\r\n");
+                char resp[32768] = {0};
+                dispatch_request(conn, user_id, line, resp, sizeof(resp));
+                // Ensure we have space for \r\n
+                if (strlen(resp) < sizeof(resp) - 2) {
+                    strcat(resp, "\r\n");
+                }
                 perform_send_and_log(sock, line, resp);
             }
         }

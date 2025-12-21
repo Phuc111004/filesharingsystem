@@ -3,6 +3,6 @@
 
 #include <mysql/mysql.h>
 
-void dispatch_request(MYSQL *db, int current_user_id, char *buffer, char *response);
+void dispatch_request(MYSQL *db, int current_user_id, char *buffer, char *response, size_t maxlen);
 
 #endif

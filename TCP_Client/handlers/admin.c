@@ -10,7 +10,7 @@
 
 // Handler for Invite User (Case 8)
 void handle_invite_user(int sockfd) {
-    char buffer[16384], user[128];
+    char buffer[32768], user[128];
     
     int selected_group_id = get_selected_admin_group(sockfd);
     if (selected_group_id == -1) return;
@@ -20,7 +20,8 @@ void handle_invite_user(int sockfd) {
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    ssize_t n = recv_line(sockfd, buffer, sizeof(buffer));
+    int n = recv_multiline(sockfd, buffer, sizeof(buffer));
+    
     if (n <= 0) return;
     buffer[n] = '\0';
     
@@ -39,12 +40,12 @@ void handle_invite_user(int sockfd) {
     
     memset(buffer, 0, sizeof(buffer));
     recv_line(sockfd, buffer, sizeof(buffer));
-    printf("Server: %s", buffer);
+    printf("Server: %s\n", buffer);
 }
 
 // Handler for Kick Member (Case 11)
 void handle_kick_member(int sockfd) {
-    char buffer[16384], user[128];
+    char buffer[32768], user[128];
     
     int selected_group_id = get_selected_admin_group(sockfd);
     if (selected_group_id == -1) return;
@@ -54,7 +55,7 @@ void handle_kick_member(int sockfd) {
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    ssize_t n = recv_line(sockfd, buffer, sizeof(buffer));
+    int n = recv_multiline(sockfd, buffer, sizeof(buffer));
     if (n <= 0) return;
     buffer[n] = '\0';
     
