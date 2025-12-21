@@ -18,8 +18,6 @@
 
 #define CHUNK_SIZE 4096
 
-// --- LOGGED USER LIST MANAGEMENT (Giữ nguyên logic bạn bè) ---
-
 typedef struct logged_user {
     char username[128];
     struct logged_user *next;
@@ -143,6 +141,17 @@ void perform_send_and_log(int sock, const char* raw_cmd, const char* resp) {
  * @function recv_line
  * Helper to receive a line from socket.
  */
+//hàm này dùng để nhận thông điệp từ client gửi lên, nhận vào 3 tham số:
+//sockfd: socket kết nối với client, buf: bộ nhớ đệm để lưu dòng nhận được, maxlen: kích thước tối đa của bộ nhớ đệm
+//i là số ký tự đã nhận được, c là biến để lưu ký tự nhận được từ socket
+//if (recv(sockfd, &c, 1, 0) <= 0): nếu không nhận được ký tự nào (kết nối bị đóng hoặc lỗi), thì thoát khỏi vòng lặp
+//buf[i] = '\0'; //đặt ký tự null kết thúc chuỗi để biến buf trở thành một chuỗi hợp lệ
+
+//tại sao cần buf là chuỗi hợp lệ? 
+//để biết được đã nhận được hết 1 thông điệp client gửi lên,
+
+//(NGOÀI LỀ) vì sau khi nhận dữ liệu từ socket, ta muốn xử lý nó như một chuỗi thông thường trong C
+//xử lý ở đâu? ví dụ như trong hàm client_thread ở trên, ta gọi recv_line để nhận lệnh từ client, sau đó dùng sscanf để phân tích cú pháp lệnh đó
 int recv_line(int sockfd, char *buf, size_t maxlen) {
     size_t i = 0;
     while (i < maxlen - 1) {
@@ -190,7 +199,12 @@ void mkdir_p(const char *path) {
  * @param filename Name of the file
  * @param size_str File size as string
  */
- //Hàm này là hàm phía server, dùng để xử lý một lệnh UPLOAD từ client:
+ //1 lưu ý nhỏ: “Parse” = phân tích / đọc / chuyển đổi một chuỗi ký tự sang dạng dữ liệu phù hợp (ở đây là số).
+ //ví dụ: long long filesize = atoll(size_str); //chuyển chuỗi size_str thành số nguyên kiểu long long và gán cho biến filesize
+ //Hàm này là hàm phía server, dùng để xử lý một lệnh UPLOAD từ client
+ //storage_path: mảng dùng để chứa đường dẫn thư mục lưu file upload
+ //snprintf: dùng để định dạng chuỗi, ghi an toàn biến folder vào storage_path theo định dạng "storage/%s"
+ //
 void handle_upload_request(int client_sock, const char *folder, const char *filename, const char *size_str) {
     long long filesize = atoll(size_str);
     if (filesize < 0) {
@@ -200,11 +214,9 @@ void handle_upload_request(int client_sock, const char *folder, const char *file
 
     char log_info[1024];
     snprintf(log_info, sizeof(log_info), "UPLOAD %s %s %lld", folder, filename, filesize);
-    // (?) tại sao cần ghi log_info ở đây
 
     // 1. Prepare Storage Path
     char storage_path[1024];
-    //tạo đường dẫn thư mục lưu file 
     if (!folder || strcmp(folder, ".") == 0 || strlen(folder) == 0) {
         snprintf(storage_path, sizeof(storage_path), "storage");
     } else {
@@ -226,7 +238,7 @@ void handle_upload_request(int client_sock, const char *folder, const char *file
 
     // 3. Receive Data Loop
     char buffer[CHUNK_SIZE];
-    //đọc từng khối dữ liệu trong file để upload 
+    //đọc từng khối dữ liệu trong file để upload
     long long received = 0;
     int error = 0;
 
@@ -358,6 +370,7 @@ void start_server(int port) {
     
     int opt = 1;
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    //tránh lỗi "Address already in use" khi khởi động lại server nhanh chóng
 
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
         perror("Bind failed");
@@ -374,6 +387,7 @@ void start_server(int port) {
     // Accept Loop
     while (1) {
         struct sockaddr_in client_addr;
+        //client_addr: nơi lưu thông tin IP, port của client sau khi accept kết nối
         socklen_t len = sizeof(client_addr);
         int new_sock = accept(server_fd, (struct sockaddr *)&client_addr, &len);
         if (new_sock < 0) {
@@ -390,6 +404,8 @@ void start_server(int port) {
         pthread_t tid;
         int *pclient = malloc(sizeof(int));
         *pclient = new_sock;
+        // phải cấp phát bộ nhớ cho từng thread, rồi copy new_sock vào đó, vì nếu không thì sau mỗi lần của vòng lặp while, 
+        // new_sock nó có thể nhận giá trị khác nhau, và các thread có thể dùng chung địa chỉ của biến new_sock dẫn đến lỗi
         if (pthread_create(&tid, NULL, client_thread, pclient) != 0) {
             perror("Thread creation failed");
             free(pclient);

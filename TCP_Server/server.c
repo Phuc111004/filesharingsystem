@@ -28,7 +28,6 @@ int main(int argc, char **argv) {
 
 	printf("[server] database connected successfully.\n");
 
-	printf("[server] listening on port %d\n", port);
 	start_server(port);
 
 	db_close(db);

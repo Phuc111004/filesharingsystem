@@ -23,7 +23,7 @@
  *
  * @param s The string to trim
  */
-static void trim_newline(char *s) {
+void trim_newline(char *s) {
     if (!s) return;
     size_t len = strlen(s);
     while (len > 0 && (s[len - 1] == '\n' || s[len - 1] == '\r')) {
@@ -43,7 +43,7 @@ static void trim_newline(char *s) {
  * - Number of bytes received on success
  * - -1 on failure or error
  */
-static int recv_line(int sockfd, char *buf, size_t maxlen) {
+int recv_line(int sockfd, char *buf, size_t maxlen) {
     if (!buf || maxlen == 0) return -1;
     size_t i = 0;
     while (i < maxlen - 1) {
@@ -66,7 +66,7 @@ static int recv_line(int sockfd, char *buf, size_t maxlen) {
  * @param path The full file path
  * @return const char* Pointer to the filename part
  */
-static const char* get_filename(const char *path) {
+const char* get_filename(const char *path) {
     const char *slash = strrchr(path, '/');
     if (!slash) slash = strrchr(path, '\\'); // Check Windows slash
     return slash ? (slash + 1) : path;
