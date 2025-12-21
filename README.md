@@ -125,3 +125,68 @@ Mô tả nhanh các thư mục và file chính để bạn hoặc nhóm dễ n�
 - `Makefile`: build rules cho `server` và `client`. Hiện giả định môi trường POSIX (Linux/WSL) và phụ thuộc `libmysqlclient`.
 
 ---
+
+## 🗃️ Hướng dẫn chạy truy vấn MySQL trên WSL
+
+Để chạy toàn bộ các truy vấn SQL (tạo schema, seed data) cho dự án này trên môi trường WSL, bạn thực hiện như sau:
+
+### Cách 1: Chạy trực tiếp từ dòng lệnh (Terminal)
+
+Đây là cách nhanh nhất để import toàn bộ file SQL vào database.
+
+1. **Khởi tạo Database và Tables (Schema)**:
+
+   ```bash
+   mysql -u root -p < database/schema.sql
+   ```
+
+   _Hệ thống sẽ yêu cầu nhập password của MySQL user `root`._
+
+2. **Thêm dữ liệu mẫu (Seed Data)**:
+
+   ```bash
+   mysql -u root -p < database/seed_data.sql
+   ```
+
+   _Lưu ý: File `seed_data.sql` phụ thuộc vào bảng đã được tạo bởi `schema.sql`. Hãy chạy schema trước._
+
+### Cách 2: Sử dụng MySQL Command Line Client
+
+Nếu bạn muốn debug hoặc chạy từng lệnh:
+
+1. Đăng nhập vào MySQL:
+
+   ```bash
+   mysql -u root -p
+   ```
+
+2. Tại prompt `mysql>`, chạy commands sau để load file:
+
+   ```sql
+   -- Load Schema
+   source database/schema.sql;
+
+   -- Load Seed Data
+   source database/seed_data.sql;
+   ```
+
+### Kiểm tra kết quả
+
+Sau khi chạy xong, bạn có thể kiểm tra xem bảng đã được tạo chưa:
+
+```sql
+USE file_sharing;
+SHOW TABLES;
+```
+
+```sql
+SELECT * FROM users;
+SELECT * FROM groups;
+```
+
+hoặc
+
+```sql
+SELECT * FROM users;
+SELECT * FROM `groups`;
+```

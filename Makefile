@@ -2,8 +2,8 @@ CC=gcc
 CFLAGS=-I/usr/include/mysql -I./ -Wall -g
 LIBS=-lmysqlclient -lpthread
 
-SERVER_SRC=TCP_Server/server.c TCP_Server/connection_handler.c database/database.c database/queries.c common/utils.c common/file_utils.c
-CLIENT_SRC=TCP_Client/client.c TCP_Client/ui.c common/utils.c common/file_utils.c
+SERVER_SRC=TCP_Server/server.c TCP_Server/connection_handler.c database/database.c common/utils.c common/file_utils.c TCP_Server/handlers/group_handlers.c TCP_Server/handlers/request_dispatcher.c database/queries.c
+CLIENT_SRC=TCP_Client/client.c TCP_Client/ui.c common/utils.c common/file_utils.c $(wildcard TCP_Client/handlers/*.c) $(wildcard TCP_Client/helpers/*.c)
 
 all: server client
 

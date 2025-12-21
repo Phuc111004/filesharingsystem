@@ -1,27 +1,52 @@
 #ifndef PROTOCOL_H
 #define PROTOCOL_H
 
+// --- COMMAND STRINGS (for text protocol parsing) ---
+#define STR_REGISTER "REGISTER"
+#define STR_LOGIN "LOGIN"
+#define STR_LOGOUT "LOGOUT"
 
-// Simple protocol opcodes
-#define CMD_REGISTER 1
-#define CMD_LOGIN 2
-#define CMD_CREATE_GROUP 3
-#define CMD_JOIN_GROUP 4
-#define CMD_UPLOAD 5
-#define CMD_DOWNLOAD 6
-#define CMD_LIST_GROUPS 7
+#define STR_CREATE_GROUP "CREATE_GROUP"
+#define STR_LIST_GROUPS "LIST_GROUPS"
+#define STR_JOIN_GROUP "JOIN_REQ"
+#define STR_LIST_MEMBERS "LIST_MEM"
+#define STR_LEAVE_GROUP "LEAVE_GROUP"
 
+#define STR_LIST_REQUESTS "LIST_REQ"
+#define STR_APPROVE_REQUEST "APPROVE"
+#define STR_KICK_MEMBER "KICK"
+#define STR_INVITE "INVITE"
 
-// message header example
-typedef struct {
-int cmd; // one of CMD_*
-int length; // payload length in bytes
-} __attribute__((packed)) msg_header_t;
+#define STR_LIST_FILE "LIST_FILE"
+#define STR_MKDIR "MKDIR"
+#define STR_UPLOAD "UPLOAD"
+#define STR_DOWNLOAD "DOWNLOAD"
+#define STR_COPY "COPY"
+#define STR_DELETE "DELETE"
+#define STR_RENAME "RENAME"
+#define STR_MOVE "MOVE"
 
-// Thêm struct này để chứa thông tin file
-typedef struct {
-    char filename[256];
-    long long filesize;
-} __attribute__((packed)) file_data;
+// --- RESPONSE CODES ---
+// Success
+#define RES_LIST_DATA 100        // Data follows
+#define RES_LOGIN_SUCCESS 110
+#define RES_DOWNLOAD_START 102
+#define RES_UPLOAD_READY 150
+
+#define RES_SUCCESS 200
+#define RES_REGISTER_SUCCESS 201
+#define RES_LOGOUT_SUCCESS 202
+#define RES_END_DATA 203
+
+// Client Errors
+#define RES_BAD_REQUEST 400
+#define RES_LOGIN_FAILED 401
+#define RES_FORBIDDEN 403
+#define RES_NOT_FOUND 404
+#define RES_CONFLICT 409 // Exists, Already logged in, etc.
+
+// Server Errors
+#define RES_SERVER_ERROR 500
+#define RES_UPLOAD_FAILED 500
 
 #endif // PROTOCOL_H
