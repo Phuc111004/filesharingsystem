@@ -4,7 +4,6 @@
 #include "../database/database.h"
 #include "../database/queries.h"
 #include "handlers/request_dispatcher.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,6 +17,10 @@
 #include <arpa/inet.h>
 
 #define CHUNK_SIZE 64000
+#define AUTH_BUF 512
+#define GROUP_BUF 512
+
+// --- LOGGED USER LIST MANAGEMENT (Giữ nguyên logic bạn bè) ---
 
 typedef struct logged_user {
     char username[128];
@@ -180,7 +183,7 @@ void* client_thread(void* arg) {
             } else {
                 perform_send_and_log(sock, line, "401 Login failed\r\n");
             }
-        } 
+        }
         else if (strcmp(cmd, STR_REGISTER) == 0) {
             char hash[512];
             utils_hash_password(arg2, hash, sizeof(hash));
@@ -196,6 +199,41 @@ void* client_thread(void* arg) {
                 memset(current_user, 0, sizeof(current_user));
             }
             perform_send_and_log(sock, line, "202 Logout success\r\n");
+        }
+        else if (strcmp(cmd, STR_CREATE_GROUP) == 0) {
+            if (user_id == -1) {
+                perform_send_and_log(sock, line, "403 Login required\r\n");
+                continue;
+            }
+
+            if (strlen(arg1) == 0) {
+                perform_send_and_log(sock, line, "400 Bad request\r\n");
+                continue;
+            }
+
+            struct stat st = {0};
+            if (stat("storage", &st) == -1) {
+                mkdir("storage", 0700);
+            }
+
+            char group_path[512];
+            snprintf(group_path, sizeof(group_path), "storage/%s", arg1);
+            if (stat(group_path, &st) == -1) {
+                if (mkdir(group_path, 0700) != 0) {
+                    perform_send_and_log(sock, line, "500 Create folder failed\r\n");
+                    continue;
+                }
+            }
+
+            int group_id = 0;
+            int cres = db_create_group(conn, arg1, user_id, group_path, &group_id);
+            if (cres == 0) {
+                perform_send_and_log(sock, line, "200 Group created\r\n");
+            } else if (cres == 1) {
+                perform_send_and_log(sock, line, "409 Group exists\r\n");
+            } else {
+                perform_send_and_log(sock, line, "500 Group create error\r\n");
+            }
         }
         // --- FEATURE COMMANDS ---
         else if (strcmp(cmd, STR_UPLOAD) == 0) {
@@ -350,53 +388,62 @@ void handle_upload_request(int client_sock, const char *folder, const char *file
  * * @param port The port number to listen on
  */
 void start_server(int port) {
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0) {
-        perror("Socket failed");
+    int server_fd, new_socket;
+    struct sockaddr_in address;
+    int opt = 1;
+    int addrlen = sizeof(address);
+    int listen_port = (port > 0) ? port : 8080;
+
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+        perror("socket failed");
         exit(EXIT_FAILURE);
     }
 
-    struct sockaddr_in address;
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
+        perror("setsockopt");
+        exit(EXIT_FAILURE);
+    }
+
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(port);
-    
-    int opt = 1;
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    address.sin_port = htons(listen_port);
 
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
-        perror("Bind failed");
+        perror("bind failed");
         exit(EXIT_FAILURE);
     }
 
-    if (listen(server_fd, 20) < 0) {
-        perror("Listen failed");
+    if (listen(server_fd, 3) < 0) {
+        perror("listen");
         exit(EXIT_FAILURE);
     }
 
-    printf("[Server] Listening on port %d...\n", port);
+    printf("[Server] Listening on port %d...\n", listen_port);
 
     while (1) {
-        struct sockaddr_in client_addr;
-        socklen_t len = sizeof(client_addr);
-        int new_sock = accept(server_fd, (struct sockaddr *)&client_addr, &len);
-        if (new_sock < 0) {
-            perror("Accept error");
+        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
+            perror("accept");
             continue;
         }
 
         char client_ip[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
         printf("New connection: %s:%d\n", client_ip, ntohs(client_addr.sin_port));
+        printf("[Server] New connection accepted.\n");
 
-        // Create thread
         pthread_t tid;
         int *pclient = malloc(sizeof(int));
-        *pclient = new_sock;
+        if (!pclient) {
+            fprintf(stderr, "[Server] malloc failed for client socket.\n");
+            close(new_socket);
+            continue;
+        }
+        *pclient = new_socket;
+
         if (pthread_create(&tid, NULL, client_thread, pclient) != 0) {
-            perror("Thread creation failed");
+            perror("pthread_create");
             free(pclient);
-            close(new_sock);
+            close(new_socket);
         } else {
             pthread_detach(tid);
         }
