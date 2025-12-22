@@ -39,7 +39,7 @@ int parse_ids_from_response(char *response, int *ids, int max_count, const char 
  *
  * @param s The string to trim
  */
-void trim_newline(char *s) {
+ void trim_newline(char *s) {
     if (!s) return;
     size_t len = strlen(s);
     while (len > 0 && (s[len - 1] == '\n' || s[len - 1] == '\r')) {
@@ -47,6 +47,7 @@ void trim_newline(char *s) {
         len--;
     }
 }
+
 
 /**
  * @function recv_line
@@ -65,12 +66,12 @@ int recv_line(int sockfd, char *buf, size_t maxlen) {
     while (i < maxlen - 1) {
         char c;
         ssize_t n = recv(sockfd, &c, 1, 0);
-        if (n <= 0) break; // Error or Connection closed
+        if (n <= 0) break;
         
         buf[i++] = c;
         if (c == '\n') break;
     }
     buf[i] = '\0';
-    trim_newline(buf); // Clean up \r\n immediately
+    trim_newline(buf); // Clean up \r\n
     return (int)i;
 }

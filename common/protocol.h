@@ -48,5 +48,6 @@
 // Server Errors
 #define RES_SERVER_ERROR 500
 #define RES_UPLOAD_FAILED 500
+//thư mục không tồn tại, nhóm không tồn tại, người dùng chưa đăng nhập
 
 #endif // PROTOCOL_H

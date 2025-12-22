@@ -17,7 +17,7 @@
 #include <time.h>
 #include <arpa/inet.h>
 
-#define CHUNK_SIZE 4096
+#define CHUNK_SIZE 64000
 
 typedef struct logged_user {
     char username[128];
@@ -139,136 +139,6 @@ void perform_send_and_log(int sock, const char* raw_cmd, const char* resp) {
 }
 
 /**
- * @function recv_line
- * Helper to receive a line from socket.
- */
-//hàm này dùng để nhận thông điệp từ client gửi lên, nhận vào 3 tham số:
-//sockfd: socket kết nối với client, buf: bộ nhớ đệm để lưu dòng nhận được, maxlen: kích thước tối đa của bộ nhớ đệm
-//i là số ký tự đã nhận được, c là biến để lưu ký tự nhận được từ socket
-//if (recv(sockfd, &c, 1, 0) <= 0): nếu không nhận được ký tự nào (kết nối bị đóng hoặc lỗi), thì thoát khỏi vòng lặp
-//buf[i] = '\0'; //đặt ký tự null kết thúc chuỗi để biến buf trở thành một chuỗi hợp lệ
-
-//tại sao cần buf là chuỗi hợp lệ? 
-//để biết được đã nhận được hết 1 thông điệp client gửi lên,
-
-//(NGOÀI LỀ) vì sau khi nhận dữ liệu từ socket, ta muốn xử lý nó như một chuỗi thông thường trong C
-//xử lý ở đâu? ví dụ như trong hàm client_thread ở trên, ta gọi recv_line để nhận lệnh từ client, sau đó dùng sscanf để phân tích cú pháp lệnh đó
-int recv_line(int sockfd, char *buf, size_t maxlen) {
-    size_t i = 0;
-    while (i < maxlen - 1) {
-        char c;
-        if (recv(sockfd, &c, 1, 0) <= 0) break;
-        buf[i++] = c;
-        if (c == '\n') break;
-    }
-    buf[i] = '\0';
-    return (int)i;
-}
-
-/**
- * @function mkdir_p
- * Creates a directory path recursively.
- * Example: "storage/data/img" -> creates "storage", then "storage/data", then "storage/data/img"
- * * @param path The directory path to create
- */
- // tạo thư mục để người dùng upload file lên
-void mkdir_p(const char *path) {
-    char temp[1024];
-    snprintf(temp, sizeof(temp), "%s", path);
-    //ghi path vào mảng temp dưới dạng chuỗi, giới hạn kích thước không vượt quá kích thước mảng temp
-    
-    size_t len = strlen(temp);
-
-    // Duyệt qua từng ký tự của đường dẫn
-    for (int i = 0; i < len; i++) {
-        // Nếu gặp dấu gạch chéo '/', tức là đã đi hết một cấp thư mục
-        if (temp[i] == '/') {
-            temp[i] = '\0';         // Cắt chuỗi tại đây (thay '/' bằng NULL)
-            mkdir(temp, 0700);      // Tạo thư mục cha này (nếu chưa có)
-            temp[i] = '/';          // Trả lại dấu '/' để đi tiếp
-        }
-    }
-    
-    mkdir(temp, 0700);
-}
-
-/**
- * @function handle_upload_request
- * Processes the file upload logic on server side.
- * * @param client_sock Socket connected to client
- * @param folder Target folder name
- * @param filename Name of the file
- * @param size_str File size as string
- */
- //1 lưu ý nhỏ: “Parse” = phân tích / đọc / chuyển đổi một chuỗi ký tự sang dạng dữ liệu phù hợp (ở đây là số).
- //ví dụ: long long filesize = atoll(size_str); //chuyển chuỗi size_str thành số nguyên kiểu long long và gán cho biến filesize
- //Hàm này là hàm phía server, dùng để xử lý một lệnh UPLOAD từ client
- //storage_path: mảng dùng để chứa đường dẫn thư mục lưu file upload
- //snprintf: dùng để định dạng chuỗi, ghi an toàn biến folder vào storage_path theo định dạng "storage/%s"
- //
-void handle_upload_request(int client_sock, const char *folder, const char *filename, const char *size_str) {
-    long long filesize = atoll(size_str);
-    if (filesize < 0) {
-        perform_send_and_log(client_sock, "UPLOAD", "400 Invalid size\r\n");
-        return;
-    }
-
-    char log_info[1024];
-    snprintf(log_info, sizeof(log_info), "UPLOAD %s %s %lld", folder, filename, filesize);
-
-    // 1. Prepare Storage Path
-    char storage_path[1024];
-    if (!folder || strcmp(folder, ".") == 0 || strlen(folder) == 0) {
-        snprintf(storage_path, sizeof(storage_path), "storage");
-    } else {
-        snprintf(storage_path, sizeof(storage_path), "storage/%s", folder);
-    }
-    mkdir_p(storage_path);
-
-    char full_path[2048];
-    snprintf(full_path, sizeof(full_path), "%s/%s", storage_path, filename);
-
-    FILE *fp = fopen(full_path, "wb");
-    if (!fp) {
-        perform_send_and_log(client_sock, log_info, "500 Create file failed\r\n");
-        return;
-    }
-
-    // 2. Notify Client: Ready
-    perform_send_and_log(client_sock, log_info, "150 Ready\r\n");
-
-    // 3. Receive Data Loop
-    char buffer[CHUNK_SIZE];
-    //đọc từng khối dữ liệu trong file để upload
-    long long received = 0;
-    int error = 0;
-
-    while (received < filesize) {
-        size_t to_read = CHUNK_SIZE;
-
-        if (filesize - received < CHUNK_SIZE) {
-            to_read = (size_t)(filesize - received);
-        }
-        ssize_t n = recv(client_sock, buffer, to_read, 0);
-        if (n <= 0) {
-            error = 1;
-            break;
-        }
-        fwrite(buffer, 1, n, fp);
-        received += n;
-    }
-    fclose(fp);
-
-    // 4. Send Final Response
-    if (!error && received == filesize) {
-        perform_send_and_log(client_sock, "UPLOAD_DATA", "200 Success\r\n");
-    } else {
-        remove(full_path); // Delete incomplete file
-        perform_send_and_log(client_sock, "UPLOAD_DATA", "500 Upload incomplete\r\n");
-    }
-}
-
-/**
  * @function client_thread
  * Main thread function to handle a single client connection.
  * * @param arg Pointer to the client socket descriptor
@@ -291,9 +161,8 @@ void* client_thread(void* arg) {
 
     // Command Processing Loop
     while (recv_line(sock, line, sizeof(line)) > 0) {
-        char cmd[32] = {0}, arg1[256] = {0}, arg2[256] = {0}, arg3[64] = {0};
-        // Simple parsing: CMD ARG1 ARG2 ARG3
-        sscanf(line, "%31s %255s %255s %63s", cmd, arg1, arg2, arg3);
+        char cmd[32] = {0}, arg1[256] = {0}, arg2[256] = {0}, arg3[256] = {0};
+        parse_command_line(line, cmd, sizeof(cmd), arg1, sizeof(arg1), arg2, sizeof(arg2), arg3, sizeof(arg3));
 
         // --- AUTH COMMANDS ---
         if (strcmp(cmd, STR_LOGIN) == 0) {
@@ -353,6 +222,129 @@ void* client_thread(void* arg) {
 }
 
 /**
+ * @function recv_line
+ * Helper to receive a line from socket.
+ */
+int recv_line(int sockfd, char *buf, size_t maxlen) {
+    size_t i = 0;
+    while (i < maxlen - 1) {
+        char c;
+        if (recv(sockfd, &c, 1, 0) <= 0) break;
+        buf[i++] = c;
+        if (c == '\n') break;
+    }
+    buf[i] = '\0';
+    return (int)i;
+}
+
+/**
+ * @function mkdir_p
+ * Creates a directory path recursively.
+ * Example: "storage/data/img" -> creates "storage", then "storage/data", then "storage/data/img"
+ * * @param path The directory path to create
+ */
+void mkdir_p(const char *path) {
+    char temp[1024];
+    snprintf(temp, sizeof(temp), "%s", path);
+    //ghi path vào mảng temp dưới dạng chuỗi, giới hạn kích thước không vượt quá kích thước mảng temp
+    
+    size_t len = strlen(temp);
+
+    for (int i = 0; i < len; i++) {
+        if (temp[i] == '/') {
+            temp[i] = '\0';         
+            mkdir(temp, 0700);      
+            temp[i] = '/';          
+        }
+    }
+    
+    mkdir(temp, 0700);
+}
+
+void parse_command_line(const char *line,
+                               char *cmd, size_t cmd_sz,
+                               char *arg1, size_t arg1_sz,
+                               char *arg2, size_t arg2_sz,
+                               char *arg3, size_t arg3_sz)
+{
+    if (!line) { cmd[0]=arg1[0]=arg2[0]=arg3[0]='\0'; return; }
+
+    sscanf(line, "%s %s %s %s", cmd, arg1, arg2, arg3);
+}
+
+/**
+ * @function handle_upload_request
+ * Processes the file upload logic on server side.
+ * * @param client_sock Socket connected to client
+ * @param folder Target folder name
+ * @param filename Name of the file
+ * @param size_str File size as string
+ */
+void handle_upload_request(int client_sock, const char *folder, const char *filename, const char *size_str) {
+    long long filesize = atoll(size_str);
+    if (filesize < 0) {
+        perform_send_and_log(client_sock, "UPLOAD", "400 Invalid size\r\n");
+        return;
+    }
+
+    char log_info[1024];
+    snprintf(log_info, sizeof(log_info), "UPLOAD %s %s %lld", folder, filename, filesize);
+
+    // khai báo mảng để lưu trữ đường dẫn thư mục
+    char storage_path[1024];
+    if (!folder || strcmp(folder, ".") == 0 || strlen(folder) == 0) {
+        snprintf(storage_path, sizeof(storage_path), "storage");
+    } else {
+        snprintf(storage_path, sizeof(storage_path), "storage/%s", folder);
+    }
+    mkdir_p(storage_path);
+
+    char full_path[2048];
+    snprintf(full_path, sizeof(full_path), "%s/%s", storage_path, filename);
+
+    FILE *fp = fopen(full_path, "wb");
+    if (!fp) {
+        perform_send_and_log(client_sock, log_info, "500 Create file failed\r\n");
+        return;
+    }
+
+    perform_send_and_log(client_sock, log_info, "150 Ready\r\n");
+
+    // 3. Receive Data Loop
+    char buffer[CHUNK_SIZE];
+    long long received = 0;
+    int error = 0;
+
+    while (received < filesize) {
+        size_t to_read = CHUNK_SIZE;
+
+        if (filesize - received < CHUNK_SIZE) {
+            to_read = (size_t)(filesize - received);
+        }
+        ssize_t n = recv(client_sock, buffer, to_read, 0);
+        if (n <= 0) {
+            error = 1;
+            break;
+        }
+        fwrite(buffer, 1, n, fp);
+        received += n;
+    }
+    fclose(fp);
+    //xử lý lại recv_line() (truyền dòng)
+    //upload file thì phải có ràng buộc, theo đúng giao thức - vào nhóm nào, thư mục nào
+    //cấp phát động (CHUNK-SIZE) thay vì cấp phát tĩnh
+
+    //có kiểu thông điệp cần login db, kiểu nào không cần
+    // 4. Send Final Response
+    if (!error && received == filesize) {
+        perform_send_and_log(client_sock, "UPLOAD_DATA", "200 Success\r\n");
+    } else {
+        remove(full_path);
+        perform_send_and_log(client_sock, "UPLOAD_DATA", "500 Upload incomplete\r\n");
+    }
+}
+
+/**
  * @function start_server
  * Sets up the TCP server socket and accepts incoming connections.
  * * @param port The port number to listen on
@@ -371,7 +363,6 @@ void start_server(int port) {
     
     int opt = 1;
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    //tránh lỗi "Address already in use" khi khởi động lại server nhanh chóng
 
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
         perror("Bind failed");
@@ -385,10 +376,8 @@ void start_server(int port) {
 
     printf("[Server] Listening on port %d...\n", port);
 
-    // Accept Loop
     while (1) {
         struct sockaddr_in client_addr;
-        //client_addr: nơi lưu thông tin IP, port của client sau khi accept kết nối
         socklen_t len = sizeof(client_addr);
         int new_sock = accept(server_fd, (struct sockaddr *)&client_addr, &len);
         if (new_sock < 0) {
@@ -396,7 +385,6 @@ void start_server(int port) {
             continue;
         }
 
-        // Print connection info
         char client_ip[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
         printf("New connection: %s:%d\n", client_ip, ntohs(client_addr.sin_port));
@@ -405,8 +393,6 @@ void start_server(int port) {
         pthread_t tid;
         int *pclient = malloc(sizeof(int));
         *pclient = new_sock;
-        // phải cấp phát bộ nhớ cho từng thread, rồi copy new_sock vào đó, vì nếu không thì sau mỗi lần của vòng lặp while, 
-        // new_sock nó có thể nhận giá trị khác nhau, và các thread có thể dùng chung địa chỉ của biến new_sock dẫn đến lỗi
         if (pthread_create(&tid, NULL, client_thread, pclient) != 0) {
             perror("Thread creation failed");
             free(pclient);

@@ -27,10 +27,13 @@
  * @param path The full file path
  * @return const char* Pointer to the filename part
  */
-const char* get_filename(const char *path) {
-    const char *slash = strrchr(path, '/');
-    if (!slash) slash = strrchr(path, '\\'); // Check Windows slash
-    return slash ? (slash + 1) : path;
+const char *get_filename(const char *path)
+{
+    const char *p = strrchr(path, '/');
+    if (p != NULL) {
+        return p + 1;
+    }
+    return path;
 }
 
 /**
@@ -40,7 +43,6 @@ const char* get_filename(const char *path) {
  * @param sockfd Socket file descriptor connected to server
  */
 void handle_upload_client(int sockfd) {
-    // Clear input buffer
     int c; while ((c = getchar()) != '\n' && c != EOF) {}
 
     char filepath[512];
@@ -65,11 +67,9 @@ void handle_upload_client(int sockfd) {
 
     char remote_folder[256];
     printf("Enter destination folder (ENTER for root): ");
-    if (!fgets(remote_folder, sizeof(remote_folder), stdin)) strcpy(remote_folder, ".");
     trim_newline(remote_folder);
     if (strlen(remote_folder) == 0) strcpy(remote_folder, ".");
 
-    // 1. Send Upload Header
     char header[1024];
     snprintf(header, sizeof(header), "UPLOAD %s %s %lld\r\n", 
              remote_folder, get_filename(filepath), filesize);
@@ -80,26 +80,16 @@ void handle_upload_client(int sockfd) {
         return;
     }
 
-    // 2. Wait for Server Readiness
     char response[256];
     if (recv_line(sockfd, response, sizeof(response)) <= 0) {
         printf("Server disconnected.\n");
         fclose(fp);
         return;
     }
+    //phần response này cần phải sửa lại cho đúng giao thức quy định sẵn - nếu k thì phải bổ sung giao thức
 
-    int code = 0;
-    sscanf(response, "%d", &code);
-    if (code != RES_UPLOAD_READY) {
-        printf("Server rejected upload: %s\n", response);
-        fclose(fp);
-        return;
-    }
+    printf("Uploading...\n");
 
-    printf("Uploading... ");
-    fflush(stdout);
-
-    // 3. Send File Data
     char buffer[CHUNK_SIZE];
     while (1) {
         size_t n = fread(buffer, 1, sizeof(buffer), fp);
@@ -111,7 +101,6 @@ void handle_upload_client(int sockfd) {
     }
     fclose(fp);
 
-    // 4. Wait for Final Result
     recv_line(sockfd, response, sizeof(response));
     printf("\nResult: %s\n", response);
 }
