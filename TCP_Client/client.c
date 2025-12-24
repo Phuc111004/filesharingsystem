@@ -16,16 +16,14 @@
 
 #define SERVER_IP "127.0.0.1"
 #define SERVER_PORT 5500
-#define CHUNK_SIZE 4096
 
+// Import các tiện ích client (chứa hàm recv_response, trim_newline)
 #include "handlers/client_utils.h"
 
 /**
  * @function get_filename
  * Extracts the filename from a full path.
- *
- * @param path The full file path
- * @return const char* Pointer to the filename part
+ * (GIỮ NGUYÊN THEO YÊU CẦU)
  */
 const char *get_filename(const char *path)
 {
@@ -39,10 +37,10 @@ const char *get_filename(const char *path)
 /**
  * @function handle_upload_client
  * Handles the file upload process from client to server.
- *
- * @param sockfd Socket file descriptor connected to server
+ * (GIỮ NGUYÊN VỊ TRÍ, SỬA NỘI DUNG BÊN TRONG)
  */
 void handle_upload_client(int sockfd) {
+    // Xóa bộ đệm bàn phím
     int c; while ((c = getchar()) != '\n' && c != EOF) {}
 
     char filepath[512];
@@ -67,9 +65,12 @@ void handle_upload_client(int sockfd) {
 
     char remote_folder[256];
     printf("Enter destination folder (ENTER for root): ");
-    trim_newline(remote_folder);
-    if (strlen(remote_folder) == 0) strcpy(remote_folder, ".");
+    if (fgets(remote_folder, sizeof(remote_folder), stdin)) {
+        trim_newline(remote_folder);
+        if (strlen(remote_folder) == 0) strcpy(remote_folder, ".");
+    }
 
+    // 1. Gửi lệnh UPLOAD (Thêm \r\n cho đúng chuẩn Stream)
     char header[1024];
     snprintf(header, sizeof(header), "UPLOAD %s %s %lld\r\n", 
              remote_folder, get_filename(filepath), filesize);
@@ -80,28 +81,51 @@ void handle_upload_client(int sockfd) {
         return;
     }
 
+    // 2. Nhận phản hồi "150 Ready" (Thay recv_line bằng recv_response)
     char response[256];
-    if (recv_line(sockfd, response, sizeof(response)) <= 0) {
+    // recv_response nhận cả khối phản hồi thay vì từng ký tự
+    if (recv_response(sockfd, response, sizeof(response)) <= 0) {
         printf("Server disconnected.\n");
         fclose(fp);
         return;
     }
-    //phần response này cần phải sửa lại cho đúng giao thức quy định sẵn - nếu k thì phải bổ sung giao thức
+
+    // Kiểm tra mã 150 (Server sẵn sàng)
+    int code = 0;
+    sscanf(response, "%d", &code);
+    if (code != 150) { // RES_UPLOAD_READY
+        printf("Server Error: %s\n", response);
+        fclose(fp);
+        return;
+    }
 
     printf("Uploading...\n");
 
-    char buffer[CHUNK_SIZE];
+    // 3. CẤP PHÁT ĐỘNG (Thay vì char buffer[CHUNK_SIZE])
+    char *buffer = (char *)malloc(CHUNK_SIZE);
+    if (buffer == NULL) {
+        perror("Memory allocation failed");
+        fclose(fp);
+        return;
+    }
+
+    // Vòng lặp gửi dữ liệu
     while (1) {
-        size_t n = fread(buffer, 1, sizeof(buffer), fp);
+        size_t n = fread(buffer, 1, CHUNK_SIZE, fp);
         if (n <= 0) break;
         if (send(sockfd, buffer, n, 0) < 0) {
             perror("Send error");
             break;
         }
     }
+
+    // 4. GIẢI PHÓNG BỘ NHỚ (Quan trọng)
+    free(buffer);
     fclose(fp);
 
-    recv_line(sockfd, response, sizeof(response));
+    // 5. Nhận kết quả cuối cùng (Thay recv_line bằng recv_response)
+    memset(response, 0, sizeof(response));
+    recv_response(sockfd, response, sizeof(response));
     printf("\nResult: %s\n", response);
 }
 
@@ -156,6 +180,7 @@ void run_client() {
                 break;
 
             case 3:  // Upload
+                // Gọi hàm nội bộ trong file này
                 handle_upload_client(sockfd);
                 break;
 

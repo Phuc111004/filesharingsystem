@@ -16,11 +16,10 @@
 #include <time.h>
 #include <arpa/inet.h>
 
-#define CHUNK_SIZE 64000
 #define AUTH_BUF 512
 #define GROUP_BUF 512
-
-// --- LOGGED USER LIST MANAGEMENT (Giữ nguyên logic bạn bè) ---
+#define LINE_MAX 8192
+#define BUFFER_SIZE 4096
 
 typedef struct logged_user {
     char username[128];
@@ -141,138 +140,11 @@ void perform_send_and_log(int sock, const char* raw_cmd, const char* resp) {
     send(sock, resp, strlen(resp), 0);
 }
 
-/**
- * @function client_thread
- * Main thread function to handle a single client connection.
- * * @param arg Pointer to the client socket descriptor
- * @return void*
- */
-void* client_thread(void* arg) {
-    int sock = *(int*)arg;
-    free(arg);
+// --- HELPER FUNCTIONS ---
 
-    MYSQL *conn = db_connect();
-    if (!conn) {
-        send(sock, "500 DB Error\r\n", 14, 0);
-        close(sock);
-        return NULL;
-    }
-
-    char line[4096];
-    char current_user[128] = {0};
-    int user_id = -1;
-
-    // Command Processing Loop
-    while (recv_line(sock, line, sizeof(line)) > 0) {
-        char cmd[32] = {0}, arg1[256] = {0}, arg2[256] = {0}, arg3[256] = {0};
-        parse_command_line(line, cmd, sizeof(cmd), arg1, sizeof(arg1), arg2, sizeof(arg2), arg3, sizeof(arg3));
-
-        // --- AUTH COMMANDS ---
-        if (strcmp(cmd, STR_LOGIN) == 0) {
-            if (user_id != -1) {
-                perform_send_and_log(sock, line, "409 Already logged in\r\n");
-            } else if (db_verify_user(conn, arg1, arg2) == 0) { // Verify pass
-                if (is_logged_in(arg1)) {
-                    perform_send_and_log(sock, line, "409 User logged in elsewhere\r\n");
-                } else {
-                    add_logged_user(arg1);
-                    strncpy(current_user, arg1, 127);
-                    user_id = db_get_user_id_by_name(conn, arg1);
-                    perform_send_and_log(sock, line, "110 Login success\r\n");
-                }
-            } else {
-                perform_send_and_log(sock, line, "401 Login failed\r\n");
-            }
-        }
-        else if (strcmp(cmd, STR_REGISTER) == 0) {
-            char hash[512];
-            utils_hash_password(arg2, hash, sizeof(hash));
-            int res = db_create_user(conn, arg1, hash);
-            if (res == 0) perform_send_and_log(sock, line, "201 Register success\r\n");
-            else if (res == 1) perform_send_and_log(sock, line, "409 User exists\r\n");
-            else perform_send_and_log(sock, line, "500 Register error\r\n");
-        }
-        else if (strcmp(cmd, STR_LOGOUT) == 0) {
-            if (user_id != -1) {
-                remove_logged_user(current_user);
-                user_id = -1;
-                memset(current_user, 0, sizeof(current_user));
-            }
-            perform_send_and_log(sock, line, "202 Logout success\r\n");
-        }
-        else if (strcmp(cmd, STR_CREATE_GROUP) == 0) {
-            if (user_id == -1) {
-                perform_send_and_log(sock, line, "403 Login required\r\n");
-                continue;
-            }
-
-            if (strlen(arg1) == 0) {
-                perform_send_and_log(sock, line, "400 Bad request\r\n");
-                continue;
-            }
-
-            struct stat st = {0};
-            if (stat("storage", &st) == -1) {
-                mkdir("storage", 0700);
-            }
-
-            char group_path[512];
-            snprintf(group_path, sizeof(group_path), "storage/%s", arg1);
-            if (stat(group_path, &st) == -1) {
-                if (mkdir(group_path, 0700) != 0) {
-                    perform_send_and_log(sock, line, "500 Create folder failed\r\n");
-                    continue;
-                }
-            }
-
-            int group_id = 0;
-            int cres = db_create_group(conn, arg1, user_id, group_path, &group_id);
-            if (cres == 0) {
-                perform_send_and_log(sock, line, "200 Group created\r\n");
-            } else if (cres == 1) {
-                perform_send_and_log(sock, line, "409 Group exists\r\n");
-            } else {
-                perform_send_and_log(sock, line, "500 Group create error\r\n");
-            }
-        }
-        // --- FEATURE COMMANDS ---
-        else if (strcmp(cmd, STR_UPLOAD) == 0) {
-            handle_upload_request(sock, arg1, arg2, arg3);
-        }
-        else {
-            // Commands requiring login
-            if (user_id == -1) {
-                perform_send_and_log(sock, line, "403 Login required\r\n");
-            } else {
-                char resp[4096] = {0};
-                dispatch_request(conn, user_id, line, resp);
-                strcat(resp, "\r\n");
-                perform_send_and_log(sock, line, resp);
-            }
-        }
-    }
-
-    // Cleanup on disconnect
-    if (user_id != -1) remove_logged_user(current_user);
-    db_close(conn);
-    close(sock);
-    return NULL;
-}
-
-/**
- * @function recv_line
- * Helper to receive a line from socket.
- */
-int recv_line(int sockfd, char *buf, size_t maxlen) {
-    size_t i = 0;
-    while (i < maxlen - 1) {
-        char c;
-        if (recv(sockfd, &c, 1, 0) <= 0) break;
-        buf[i++] = c;
-        if (c == '\n') break;
-    }
-    buf[i] = '\0';
-    return (int)i;
+void parse_command_line(const char *line, char *cmd, size_t cmd_sz, char *arg1, size_t arg1_sz, char *arg2, size_t arg2_sz, char *arg3, size_t arg3_sz) {
+    if (!line) { cmd[0]=arg1[0]=arg2[0]=arg3[0]='\0'; return; }
+    sscanf(line, "%s %s %s %s", cmd, arg1, arg2, arg3);
 }
 
 /**
@@ -284,33 +156,21 @@ int recv_line(int sockfd, char *buf, size_t maxlen) {
 void mkdir_p(const char *path) {
     char temp[1024];
     snprintf(temp, sizeof(temp), "%s", path);
-    //ghi path vào mảng temp dưới dạng chuỗi, giới hạn kích thước không vượt quá kích thước mảng temp
-    
     size_t len = strlen(temp);
-
     for (int i = 0; i < len; i++) {
         if (temp[i] == '/') {
-            temp[i] = '\0';         
-            mkdir(temp, 0700);      
-            temp[i] = '/';          
+            temp[i] = '\0'; mkdir(temp, 0700); temp[i] = '/';
         }
     }
-    
     mkdir(temp, 0700);
 }
 
-void parse_command_line(const char *line,
-                               char *cmd, size_t cmd_sz,
-                               char *arg1, size_t arg1_sz,
-                               char *arg2, size_t arg2_sz,
-                               char *arg3, size_t arg3_sz)
-{
-    if (!line) { cmd[0]=arg1[0]=arg2[0]=arg3[0]='\0'; return; }
-
-    sscanf(line, "%s %s %s %s", cmd, arg1, arg2, arg3);
-}
-
 /**
+ * @function handle_upload_request
+ * Xử lý Upload file an toàn với Stream Processing
+ * (Đã cập nhật để nhận residue_data)
+ */
+ /**
  * @function handle_upload_request
  * Processes the file upload logic on server side.
  * * @param client_sock Socket connected to client
@@ -318,7 +178,8 @@ void parse_command_line(const char *line,
  * @param filename Name of the file
  * @param size_str File size as string
  */
-void handle_upload_request(int client_sock, const char *folder, const char *filename, const char *size_str) {
+
+void handle_upload_request(int client_sock, const char *folder, const char *filename, const char *size_str, const char *residue_data, size_t residue_len) {
     long long filesize = atoll(size_str);
     if (filesize < 0) {
         perform_send_and_log(client_sock, "UPLOAD", "400 Invalid size\r\n");
@@ -328,13 +189,9 @@ void handle_upload_request(int client_sock, const char *folder, const char *file
     char log_info[1024];
     snprintf(log_info, sizeof(log_info), "UPLOAD %s %s %lld", folder, filename, filesize);
 
-    // khai báo mảng để lưu trữ đường dẫn thư mục
     char storage_path[1024];
-    if (!folder || strcmp(folder, ".") == 0 || strlen(folder) == 0) {
-        snprintf(storage_path, sizeof(storage_path), "storage");
-    } else {
-        snprintf(storage_path, sizeof(storage_path), "storage/%s", folder);
-    }
+    if (!folder || strcmp(folder, ".") == 0 || strlen(folder) == 0) snprintf(storage_path, sizeof(storage_path), "storage");
+    else snprintf(storage_path, sizeof(storage_path), "storage/%s", folder);
     mkdir_p(storage_path);
 
     char full_path[2048];
@@ -346,19 +203,35 @@ void handle_upload_request(int client_sock, const char *folder, const char *file
         return;
     }
 
+    // Gửi phản hồi sẵn sàng (dùng mã số define trong protocol.h hoặc hardcode tạm)
+    // Giả sử RES_UPLOAD_READY là 150
     perform_send_and_log(client_sock, log_info, "150 Ready\r\n");
 
-    // 3. Receive Data Loop
-    char buffer[CHUNK_SIZE];
     long long received = 0;
     int error = 0;
 
+    // 1. Ghi dữ liệu thừa (Residue) từ buffer trước (nếu có)
+    if (residue_len > 0) {
+        size_t to_write = residue_len;
+        if (received + to_write > filesize) {
+            to_write = filesize - received;
+        }
+        fwrite(residue_data, 1, to_write, fp);
+        received += to_write;
+    }
+
+    // 2. Vòng lặp nhận tiếp dữ liệu còn thiếu (Cấp phát động)
+    char *buffer = (char *)malloc(CHUNK_SIZE);
+    if (!buffer) {
+        perror("Malloc failed");
+        fclose(fp);
+        return;
+    }
+
     while (received < filesize) {
         size_t to_read = CHUNK_SIZE;
-
-        if (filesize - received < CHUNK_SIZE) {
-            to_read = (size_t)(filesize - received);
-        }
+        if (filesize - received < CHUNK_SIZE) to_read = (size_t)(filesize - received);
+        
         ssize_t n = recv(client_sock, buffer, to_read, 0);
         if (n <= 0) {
             error = 1;
@@ -367,19 +240,223 @@ void handle_upload_request(int client_sock, const char *folder, const char *file
         fwrite(buffer, 1, n, fp);
         received += n;
     }
+    free(buffer);
     fclose(fp);
-    //xử lý lại recv_line() (truyền dòng)
-    //upload file thì phải có ràng buộc, theo đúng giao thức - vào nhóm nào, thư mục nào
-    //cấp phát động (CHUNK-SIZE) thay vì cấp phát tĩnh
 
-    //có kiểu thông điệp cần login db, kiểu nào không cần
-    // 4. Send Final Response
-    if (!error && received == filesize) {
-        perform_send_and_log(client_sock, "UPLOAD_DATA", "200 Success\r\n");
-    } else {
+    if (!error && received == filesize) perform_send_and_log(client_sock, "UPLOAD_DATA", "200 Success\r\n");
+    else {
         remove(full_path);
-        perform_send_and_log(client_sock, "UPLOAD_DATA", "500 Upload incomplete\r\n");
+        perform_send_and_log(client_sock, "UPLOAD_DATA", "501 Upload incomplete\r\n");
     }
+}
+
+/**
+ * @function handle_download_request
+ * Xử lý Download file
+ */
+void handle_download_request(int client_sock, const char *folder, const char *filename) {
+    char file_path[1024];
+    if (folder && strlen(folder) > 0 && strcmp(folder, ".") != 0) {
+        snprintf(file_path, sizeof(file_path), "storage/%s/%s", folder, filename);
+    } else {
+        snprintf(file_path, sizeof(file_path), "storage/%s", filename);
+    }
+
+    FILE *fp = fopen(file_path, "rb");
+    if (!fp) {
+        perform_send_and_log(client_sock, "DOWNLOAD", "404 File not found\r\n");
+        return;
+    }
+
+    fseek(fp, 0, SEEK_END);
+    long long filesize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    char header[256];
+    // Dùng mã 102 cho Download start
+    snprintf(header, sizeof(header), "102 %lld\r\n", filesize);
+    send(client_sock, header, strlen(header), 0);
+
+    printf("[Server] Sending file: %s (%lld bytes)\n", filename, filesize);
+
+    char *buffer = (char *)malloc(CHUNK_SIZE);
+    if (!buffer) {
+        perror("Malloc failed");
+        fclose(fp);
+        return;
+    }
+    
+    size_t n;
+    while ((n = fread(buffer, 1, CHUNK_SIZE, fp)) > 0) {
+        if (send(client_sock, buffer, n, 0) == -1) {
+            perror("Send file error");
+            break;
+        }
+    }
+    
+    free(buffer);
+    fclose(fp);
+    printf("[Server] File sent successfully.\n");
+}
+
+
+ /**
+ * @function client_thread
+ * Main thread function to handle a single client connection.
+ * * @param arg Pointer to the client socket descriptor
+ * @return void*
+ */
+//CODE SỬA ĐỔI: Xử lý truyền dòng (Buffer tích lũy)
+void* client_thread(void* arg) {
+    int sock = *(int*)arg;
+    free(arg);
+
+    MYSQL *conn = db_connect();
+    if (!conn) {
+        send(sock, "500 DB Error\r\n", 14, 0);
+        close(sock);
+        return NULL;
+    }
+
+    char recvbuf[BUFFER_SIZE];
+    //buffer tạm cho từng lần recv
+    //lần recv sau -> dữ liệu cũ bị ghi đè
+    char acc[LINE_MAX]; 
+    //buffer tích lũy, lưu dữ liệu từ nhiều lần recv
+
+    size_t acc_len = 0; //số byte hiện có trong acc
+    acc[0] = '\0';
+
+    char current_user[128] = {0};
+    int user_id = -1;
+
+    while (1) {
+        ssize_t received = recv(sock, recvbuf, sizeof(recvbuf) - 1, 0);
+        if (received <= 0) break;
+
+        if (acc_len + received >= sizeof(acc) - 1) {
+            acc_len = 0; acc[0] = '\0';
+            perform_send_and_log(sock, "UNKNOWN", "300 Command too long\r\n");
+            continue;
+        }
+
+        memcpy(acc + acc_len, recvbuf, received);
+        //copy dữ liệu mới nhận được (đang ở trong recvbuf) vào acc+acc_len 
+        //acc+acc_len là vị trí tiếp theo để ghi dữ liệu mới
+        acc_len += received;
+        acc[acc_len] = '\0';
+
+        char *line_start = acc;
+        char *eol;
+
+        while ((eol = strstr(line_start, "\r\n")) != NULL) {
+        //hàm strstr tìm tất cả chuỗi con "\r\n" trong acc, trả về con trỏ đến vị trí đầu tiên của chuỗi con
+            *eol = '\0';
+            char *line = line_start;
+            //line trỏ tới đầu dòng lệnh vừa được cắt ra để xử lý
+
+            if (strlen(line) > 0) {
+                //khai báo các buffer để lưu command và tham số từ dòng lệnh mà client nhập vào
+                char cmd[32] = {0}, arg1[256] = {0}, arg2[256] = {0}, arg3[256] = {0};
+                parse_command_line(line, cmd, sizeof(cmd), arg1, sizeof(arg1), arg2, sizeof(arg2), arg3, sizeof(arg3));
+
+                // [AUTH COMMANDS]
+                if (strcmp(cmd, "LOGIN") == 0) {
+                    if (user_id != -1) perform_send_and_log(sock, line, "409 Already logged in\r\n");
+                    else if (db_verify_user(conn, arg1, arg2) == 0) {
+                        if (is_logged_in(arg1)) perform_send_and_log(sock, line, "409 User logged in elsewhere\r\n");
+                        else {
+                            add_logged_user(arg1);
+                            strncpy(current_user, arg1, 127);
+                            user_id = db_get_user_id_by_name(conn, arg1);
+                            perform_send_and_log(sock, line, "110 Login success\r\n");
+                        }
+                    } else perform_send_and_log(sock, line, "401 Login failed\r\n");
+                }
+                else if (strcmp(cmd, "REGISTER") == 0) {
+                    char hash[512];
+                    utils_hash_password(arg2, hash, sizeof(hash));
+                    int res = db_create_user(conn, arg1, hash);
+                    if (res == 0) perform_send_and_log(sock, line, "201 Register success\r\n");
+                    else if (res == 1) perform_send_and_log(sock, line, "409 User exists\r\n");
+                    else perform_send_and_log(sock, line, "500 Register error\r\n");
+                }
+                else if (strcmp(cmd, "LOGOUT") == 0) {
+                    if (user_id != -1) {
+                        remove_logged_user(current_user);
+                        user_id = -1;
+                        memset(current_user, 0, sizeof(current_user));
+                    }
+                    perform_send_and_log(sock, line, "202 Logout success\r\n");
+                }
+                // [GROUP COMMANDS]
+                else if (strcmp(cmd, "CREATE_GROUP") == 0) {
+                    if (user_id == -1) perform_send_and_log(sock, line, "403 Login required\r\n");
+                    else if (strlen(arg1) == 0) perform_send_and_log(sock, line, "400 Bad request\r\n");
+                    else {
+                        struct stat st = {0};
+                        if (stat("storage", &st) == -1) mkdir("storage", 0700);
+                        char group_path[512];
+                        snprintf(group_path, sizeof(group_path), "storage/%s", arg1);
+                        if (stat(group_path, &st) == -1) mkdir(group_path, 0700);
+
+                        int group_id_out = 0;
+                        int cres = db_create_group(conn, arg1, user_id, group_path, &group_id_out);
+                        if (cres == 0) perform_send_and_log(sock, line, "200 Group created\r\n");
+                        else if (cres == 1) perform_send_and_log(sock, line, "409 Group exists\r\n");
+                        else perform_send_and_log(sock, line, "500 Group create error\r\n");
+                    }
+                }
+                // [UPLOAD COMMAND]
+                else if (strcmp(cmd, "UPLOAD") == 0) {
+                    // Tính toán dữ liệu thừa
+                    char *residue_ptr = eol + 2;
+                    size_t residue_len = (acc + acc_len) - residue_ptr;
+                    if (residue_len < 0) residue_len = 0;
+
+                    // Gọi hàm upload (6 tham số)
+                    handle_upload_request(sock, arg1, arg2, arg3, residue_ptr, residue_len);
+
+                    // Reset buffer
+                    acc_len = 0; acc[0] = '\0';
+                    break; 
+                }
+                // [DOWNLOAD COMMAND]
+                else if (strcmp(cmd, "DOWNLOAD") == 0) {
+                     // arg1: filename, arg2: folder
+                     handle_download_request(sock, arg2, arg1);
+                }
+                // [OTHER COMMANDS]
+                else {
+                    if (user_id == -1) perform_send_and_log(sock, line, "403 Login required\r\n");
+                    else {
+                        char resp[4096] = {0};
+                        dispatch_request(conn, user_id, line, resp);
+                        strcat(resp, "\r\n");
+                        perform_send_and_log(sock, line, resp);
+                    }
+                }
+            }
+            line_start = eol + 2;
+        }
+
+        if (acc_len == 0) continue;
+
+        size_t processed = line_start - acc;
+        //line_start hiện tại trỏ tới vị trí sau dấu \r\n cuối cùng đã xử lý
+        //acc trỏ tới đầu buffer tích lũy
+        size_t remaining = acc_len - processed;
+        //remaining là số byte còn lại chưa xử lý trong acc
+        //processed là số byte đã xử lý
+        memmove(acc, line_start, remaining);
+        acc_len = remaining;
+        acc[acc_len] = '\0';
+    }
+
+    if (user_id != -1) remove_logged_user(current_user);
+    db_close(conn);
+    close(sock);
+    return NULL;
 }
 
 /**
@@ -389,7 +466,7 @@ void handle_upload_request(int client_sock, const char *folder, const char *file
  */
 void start_server(int port) {
     int server_fd, new_socket;
-    struct sockaddr_in address;
+    struct sockaddr_in address; // Biến này tên là address
     int opt = 1;
     int addrlen = sizeof(address);
     int listen_port = (port > 0) ? port : 8080;
@@ -399,7 +476,7 @@ void start_server(int port) {
         exit(EXIT_FAILURE);
     }
 
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) {
         perror("setsockopt");
         exit(EXIT_FAILURE);
     }
@@ -427,14 +504,13 @@ void start_server(int port) {
         }
 
         char client_ip[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
-        printf("New connection: %s:%d\n", client_ip, ntohs(client_addr.sin_port));
-        printf("[Server] New connection accepted.\n");
+        // [FIX 3] Sửa client_addr -> address
+        inet_ntop(AF_INET, &address.sin_addr, client_ip, sizeof(client_ip));
+        printf("New connection: %s:%d\n", client_ip, ntohs(address.sin_port));
 
         pthread_t tid;
         int *pclient = malloc(sizeof(int));
         if (!pclient) {
-            fprintf(stderr, "[Server] malloc failed for client socket.\n");
             close(new_socket);
             continue;
         }
@@ -449,3 +525,4 @@ void start_server(int port) {
         }
     }
 }
+

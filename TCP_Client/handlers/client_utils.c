@@ -1,8 +1,10 @@
 #include "client_utils.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <sys/socket.h>
 
-// Helper to parse IDs from server response (format: [ID: xxx] or [ReqID: xxx] or [InvID: xxx])
+// Helper to parse IDs from server response
 int parse_ids_from_response(char *response, int *ids, int max_count, const char *id_pattern) {
     int count = 0;
     char *current = response;
@@ -26,20 +28,10 @@ int parse_ids_from_response(char *response, int *ids, int max_count, const char 
             break;
         }
     }
-    
     return count;
 }
 
-#include <sys/socket.h>
-#include <stdio.h>
-
-/**
- * @function trim_newline
- * Removes trailing newline characters from a string.
- *
- * @param s The string to trim
- */
- void trim_newline(char *s) {
+void trim_newline(char *s) {
     if (!s) return;
     size_t len = strlen(s);
     while (len > 0 && (s[len - 1] == '\n' || s[len - 1] == '\r')) {
@@ -48,30 +40,16 @@ int parse_ids_from_response(char *response, int *ids, int max_count, const char 
     }
 }
 
-
 /**
- * @function recv_line
- * Receives a single line of text from the socket.
- *
- * @param sockfd Socket file descriptor
- * @param buf Buffer to store the received line
- * @param maxlen Maximum size of the buffer
- * @return int
- * - Number of bytes received on success
- * - -1 on failure or error
+ * Nhận phản hồi từ server (dạng block/chunk).
+ * Thay thế cho recv_line cũ.
  */
-int recv_line(int sockfd, char *buf, size_t maxlen) {
+int recv_response(int sockfd, char *buf, size_t maxlen) {
     if (!buf || maxlen == 0) return -1;
-    size_t i = 0;
-    while (i < maxlen - 1) {
-        char c;
-        ssize_t n = recv(sockfd, &c, 1, 0);
-        if (n <= 0) break;
-        
-        buf[i++] = c;
-        if (c == '\n') break;
-    }
-    buf[i] = '\0';
-    trim_newline(buf); // Clean up \r\n
-    return (int)i;
+    // Nhận dữ liệu một lần
+    ssize_t n = recv(sockfd, buf, maxlen - 1, 0);
+    if (n <= 0) return -1; 
+    
+    buf[n] = '\0'; 
+    return (int)n;
 }

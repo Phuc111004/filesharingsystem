@@ -51,4 +51,7 @@
 #define RES_UPLOAD_FAILED 500
 //thư mục không tồn tại, nhóm không tồn tại, người dùng chưa đăng nhập
 
+// --- OTHER CONSTANTS ---
+#define CHUNK_SIZE 64000
+
 #endif // PROTOCOL_H
