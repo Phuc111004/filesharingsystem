@@ -12,7 +12,7 @@ void handle_login(int sockfd) {
     
     printf("Username: "); scanf("%s", user);
     printf("Password: "); scanf("%s", pass);
-    snprintf(buffer, sizeof(buffer), "LOGIN %s %s\n", user, pass);
+    snprintf(buffer, sizeof(buffer), "LOGIN %s %s\r\n", user, pass);
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
@@ -26,7 +26,7 @@ void handle_register(int sockfd) {
     
     printf("Username: "); scanf("%s", user);
     printf("Password: "); scanf("%s", pass);
-    snprintf(buffer, sizeof(buffer), "REGISTER %s %s\n", user, pass);
+    snprintf(buffer, sizeof(buffer), "REGISTER %s %s\r\n", user, pass);
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
@@ -38,7 +38,7 @@ void handle_register(int sockfd) {
 void handle_logout(int sockfd) {
     char buffer[4096];
     
-    snprintf(buffer, sizeof(buffer), "LOGOUT\n");
+    snprintf(buffer, sizeof(buffer), "LOGOUT\r\n");
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));

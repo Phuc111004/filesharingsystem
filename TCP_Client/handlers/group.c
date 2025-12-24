@@ -7,12 +7,38 @@
 #include <string.h>
 #include <sys/socket.h>
 
+// Handler for Create Group (Case 4)
+void handle_create_group(int sockfd) {
+    char buffer[4096];
+    char group_name[128];
+
+    printf("Group name: ");
+    if (scanf("%127s", group_name) != 1) {
+        printf("Invalid group name.\n");
+        while (getchar() != '\n' && getchar() != EOF) {} // clear stdin
+        return;
+    }
+
+    // [SỬA] Đổi \n thành \r\n
+    snprintf(buffer, sizeof(buffer), "CREATE_GROUP %s\r\n", group_name);
+    send_all(sockfd, buffer, strlen(buffer));
+
+    memset(buffer, 0, sizeof(buffer));
+    
+    // [SỬA] Thay recv_line bằng recv thường
+    ssize_t n = recv(sockfd, buffer, sizeof(buffer) - 1, 0);
+    if (n > 0) buffer[n] = '\0';
+    
+    printf("Server: %s", buffer);
+}
+
 // Handler for Join Group (Case 7)
 void handle_join_group(int sockfd) {
     char buffer[32768];
     
     // Request list of groups
-    snprintf(buffer, sizeof(buffer), "LIST_JOINABLE_GROUPS\n");
+    // [SỬA] Đổi \n thành \r\n
+    snprintf(buffer, sizeof(buffer), "LIST_JOINABLE_GROUPS\r\n");
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
@@ -53,7 +79,9 @@ void handle_join_group(int sockfd) {
     
     // Send JOIN_REQ
     int selected_group_id = group_ids[selection - 1];
-    snprintf(buffer, sizeof(buffer), "JOIN_REQ %d\n", selected_group_id);
+    
+    // [SỬA] Đổi \n thành \r\n
+    snprintf(buffer, sizeof(buffer), "JOIN_REQ %d\r\n", selected_group_id);
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
@@ -65,8 +93,11 @@ void handle_join_group(int sockfd) {
 void handle_leave_group(int sockfd) {
     char buffer[4096], group_id[16];
     
-    printf("Group ID: "); scanf("%s", group_id);
-    snprintf(buffer, sizeof(buffer), "LEAVE_GROUP %s\n", group_id);
+    printf("Group ID: "); 
+    scanf("%s", group_id);
+    
+    // [SỬA] Đổi \n thành \r\n
+    snprintf(buffer, sizeof(buffer), "LEAVE_GROUP %s\r\n", group_id);
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));

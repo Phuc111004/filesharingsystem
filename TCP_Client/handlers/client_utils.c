@@ -1,11 +1,10 @@
 #include "client_utils.h"
 #include <string.h>
 #include <stdlib.h>
-#include <sys/socket.h>
 #include <stdio.h>
+#include <sys/socket.h>
 
-
-// Helper to parse IDs from server response (format: [ID: xxx] or [ReqID: xxx] or [InvID: xxx])
+// Helper to parse IDs from server response
 int parse_ids_from_response(char *response, int *ids, int max_count, const char *id_pattern) {
     int count = 0;
     char *current = response;
@@ -29,7 +28,6 @@ int parse_ids_from_response(char *response, int *ids, int max_count, const char 
             break;
         }
     }
-    
     return count;
 }
 
@@ -43,21 +41,18 @@ void trim_newline(char *s) {
     }
 }
 
-// Updated recv_line as character-by-character reader
-int recv_line(int sockfd, char *buf, size_t maxlen) {
+/**
+ * Nhận phản hồi từ server (dạng block/chunk).
+ * Thay thế cho recv_line cũ.
+ */
+int recv_response(int sockfd, char *buf, size_t maxlen) {
     if (!buf || maxlen == 0) return -1;
-    size_t i = 0;
-    while (i < maxlen - 1) {
-        char c;
-        ssize_t n = recv(sockfd, &c, 1, 0);
-        if (n <= 0) break; // Error or Connection closed
-        
-        buf[i++] = c;
-        if (c == '\n') break;
-    }
-    buf[i] = '\0';
-    trim_newline(buf); // Clean up \r\n immediately
-    return (int)i;
+    // Nhận dữ liệu một lần
+    ssize_t n = recv(sockfd, buf, maxlen - 1, 0);
+    if (n <= 0) return -1; 
+    
+    buf[n] = '\0'; 
+    return (int)n;
 }
 
 // Receives lines until an empty line is received, accumulating them into buf.
