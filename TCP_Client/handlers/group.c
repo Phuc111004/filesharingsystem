@@ -24,7 +24,11 @@ void handle_join_group(int sockfd) {
     buffer[n] = '\0';
     
     // Display groups
-    printf("\nAvailable Groups:\n%s\n", buffer);
+    if (is_error_response(buffer)) {
+        printf("%s\n", buffer);
+    } else {
+        printf("\nAvailable Groups:\n%s\n", buffer);
+    }
 
     if (strstr(buffer, "No joinable groups available.") != NULL) {
         return;

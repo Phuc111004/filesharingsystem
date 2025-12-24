@@ -317,21 +317,22 @@ void* client_thread(void* arg) {
             perform_send_and_log(sock, line, "202 Logout success\r\n");
         }
         // --- FEATURE COMMANDS ---
-        else if (strcmp(cmd, STR_UPLOAD) == 0) {
-            handle_upload_request(sock, arg1, arg2, arg3);
-        }
         else {
             // Commands requiring login
             if (user_id == -1) {
                 perform_send_and_log(sock, line, "403 Login required\r\n");
             } else {
-                char resp[32768] = {0};
-                dispatch_request(conn, user_id, line, resp, sizeof(resp));
-                // Ensure we have space for \r\n
-                if (strlen(resp) < sizeof(resp) - 2) {
-                    strcat(resp, "\r\n");
+                if (strcmp(cmd, STR_UPLOAD) == 0) {
+                    handle_upload_request(sock, arg1, arg2, arg3);
+                } else {
+                    char resp[32768] = {0};
+                    dispatch_request(conn, user_id, line, resp, sizeof(resp));
+                    // Ensure we have space for \r\n
+                    if (strlen(resp) < sizeof(resp) - 2) {
+                        strcat(resp, "\r\n");
+                    }
+                    perform_send_and_log(sock, line, resp);
                 }
-                perform_send_and_log(sock, line, resp);
             }
         }
     }

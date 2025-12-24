@@ -25,9 +25,17 @@ void handle_invite_user(int sockfd) {
     if (n <= 0) return;
     buffer[n] = '\0';
     
-    printf("\nAvailable Users to Invite:\n%s\n", buffer);
+    if (is_error_response(buffer)) {
+        printf("%s\n", buffer);
+    } else {
+        printf("\nAvailable Users to Invite:\n%s\n", buffer);
+    }
     
     if (strstr(buffer, "All users are already members") != NULL) {
+        return;
+    }
+
+    if (is_error_response(buffer)) {
         return;
     }
     
@@ -59,9 +67,17 @@ void handle_kick_member(int sockfd) {
     if (n <= 0) return;
     buffer[n] = '\0';
     
-    printf("\nGroup Members:\n%s\n", buffer);
+    if (is_error_response(buffer)) {
+        printf("%s\n", buffer);
+    } else {
+        printf("\nGroup Members:\n%s\n", buffer);
+    }
 
     if (strstr(buffer, "No members") != NULL) {
+        return;
+    }
+
+    if (is_error_response(buffer)) {
         return;
     }
     

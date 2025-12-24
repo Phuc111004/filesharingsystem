@@ -23,7 +23,11 @@ void handle_approve_request(int sockfd) {
     }
     buffer[n] = '\0';
     
-    printf("\nPending Join Requests:\n%s\n", buffer);
+    if (is_error_response(buffer)) {
+        printf("%s\n", buffer);
+    } else {
+        printf("\nPending Join Requests:\n%s\n", buffer);
+    }
     
     // Parse request IDs
     int req_ids[100];
@@ -72,7 +76,11 @@ void handle_accept_invitation(int sockfd) {
     }
     buffer[n] = '\0';
     
-    printf("\nYour Pending Invitations:\n%s\n", buffer);
+    if (is_error_response(buffer)) {
+        printf("%s\n", buffer);
+    } else {
+        printf("\nYour Pending Invitations:\n%s\n", buffer);
+    }
     
     // Parse invitation IDs
     int inv_ids[100];

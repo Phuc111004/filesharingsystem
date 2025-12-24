@@ -22,7 +22,11 @@ int get_selected_admin_group(int sockfd) {
     }
     buffer[n] = '\0';
     
-    printf("\nYour Admin Groups:\n%s\n", buffer);
+    if (is_error_response(buffer)) {
+        printf("%s\n", buffer);
+    } else {
+        printf("\nYour Admin Groups:\n%s\n", buffer);
+    }
     
     // Parse group IDs
     int group_ids[100];

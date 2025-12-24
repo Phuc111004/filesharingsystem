@@ -3,6 +3,7 @@
 #include "../common/file_utils.h"
 #include "../common/utils.h"
 #include "handlers/handlers.h"
+#include "handlers/file_management.h"
 #include "ui.h"
 
 #include <stdio.h>
@@ -216,7 +217,11 @@ void run_client() {
                 handle_logout(sockfd);
                 break;
 
-            case 0:  // Exit
+            case 14: // File Management
+                handle_file_management(sockfd);
+                break;
+
+            case 15: // Exit
                 close(sockfd);
                 return;
 

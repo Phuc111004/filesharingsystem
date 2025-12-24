@@ -219,6 +219,28 @@ void db_list_all_groups(MYSQL* conn, char* buffer, size_t size) {
     mysql_free_result(res);
 }
 
+void db_get_group_name(MYSQL* conn, int group_id, char* buffer, size_t size) {
+    char query[512];
+    snprintf(query, sizeof(query), "SELECT group_name FROM `groups` WHERE group_id = %d", group_id);
+    
+    if (mysql_query(conn, query)) {
+        snprintf(buffer, size, "Group Unknown");
+        return;
+    }
+    
+    MYSQL_RES *res = mysql_store_result(conn);
+    MYSQL_ROW row = mysql_fetch_row(res);
+    
+    if (row) {
+        strncpy(buffer, row[0], size - 1);
+        buffer[size - 1] = '\0';
+    } else {
+        snprintf(buffer, size, "Group Unknown");
+    }
+    
+    mysql_free_result(res);
+}
+
 // Enhanced group management functions
 
 void db_list_admin_groups(MYSQL* conn, int user_id, char* buffer, size_t size) {
@@ -254,6 +276,40 @@ void db_list_admin_groups(MYSQL* conn, int user_id, char* buffer, size_t size) {
     strncat(buffer, "\n", size - strlen(buffer) - 1);
     mysql_free_result(res);
 }
+void db_list_my_groups(MYSQL* conn, int user_id, char* buffer, size_t size) {
+    char query[1024];
+    // List groups where user is member OR admin OR creator
+    snprintf(query, sizeof(query),
+        "SELECT g.group_id, g.group_name "
+        "FROM `groups` g "
+        "LEFT JOIN user_groups ug ON g.group_id = ug.group_id AND ug.user_id = %d "
+        "WHERE g.created_by = %d OR ug.user_id IS NOT NULL "
+        "GROUP BY g.group_id "
+        "ORDER BY g.group_id", user_id, user_id);
+    
+    if (mysql_query(conn, query)) {
+        snprintf(buffer, size, "Error querying your groups.");
+        return;
+    }
+    
+    MYSQL_RES *res = mysql_store_result(conn);
+    MYSQL_ROW row;
+    
+    strcpy(buffer, "");
+    int count = 0;
+    while ((row = mysql_fetch_row(res))) {
+        if (count > 0) strncat(buffer, "\n", size - strlen(buffer) - 1);
+        char line[256];
+        count++;
+        snprintf(line, sizeof(line), "[%d] %s [ID: %s]", count, row[1], row[0]);
+        strncat(buffer, line, size - strlen(buffer) - 1);
+    }
+    
+    if (count == 0) strcpy(buffer, "You are not a member of any groups.");
+    strncat(buffer, "\n", size - strlen(buffer) - 1);
+    mysql_free_result(res);
+}
+
 
 void db_list_non_members(MYSQL* conn, int group_id, char* buffer, size_t size) {
     char query[1024];
@@ -433,4 +489,64 @@ void db_list_joinable_groups(MYSQL* conn, int user_id, char* buffer, size_t size
     strncat(buffer, "\n", size - strlen(buffer) - 1);
     
     mysql_free_result(res);
+}
+
+void db_list_files(MYSQL* conn, int group_id, char* buffer, size_t size) {
+    char query[1024];
+    snprintf(query, sizeof(query),
+        "SELECT id, name, path, size, uploaded_at "
+        "FROM root_directory "
+        "WHERE group_id = %d AND is_deleted = FALSE "
+        "ORDER BY name", group_id);
+    
+    if (mysql_query(conn, query)) {
+        snprintf(buffer, size, "Error querying files.");
+        return;
+    }
+    
+    MYSQL_RES *res = mysql_store_result(conn);
+    MYSQL_ROW row;
+    
+    strcpy(buffer, "");
+    int count = 0;
+    while ((row = mysql_fetch_row(res))) {
+        if (count > 0) strncat(buffer, "\n", size - strlen(buffer) - 1);
+        char line[512];
+        count++;
+        // Format: [num] Name (Size: bytes) [ID: id]
+        snprintf(line, sizeof(line), "[%d] %s (Size: %s bytes) [ID: %s]", 
+                 count, row[1], row[3], row[0]);
+        strncat(buffer, line, size - strlen(buffer) - 1);
+    }
+    
+    if (count == 0) strcpy(buffer, "No files available in this group.");
+    strncat(buffer, "\n", size - strlen(buffer) - 1);
+    mysql_free_result(res);
+}
+
+int db_rename_item(MYSQL* conn, int item_id, const char* new_name) {
+    char query[1024];
+    snprintf(query, sizeof(query), "UPDATE root_directory SET name='%s' WHERE id=%d", new_name, item_id);
+    return db_execute(conn, query);
+}
+
+int db_delete_item(MYSQL* conn, int item_id) {
+    char query[512];
+    snprintf(query, sizeof(query), "UPDATE root_directory SET is_deleted=TRUE WHERE id=%d", item_id);
+    return db_execute(conn, query);
+}
+
+int db_copy_item(MYSQL* conn, int item_id, int uploaded_by) {
+    char query[2048];
+    snprintf(query, sizeof(query), 
+        "INSERT INTO root_directory (group_id, name, path, size, uploaded_by) "
+        "SELECT group_id, CONCAT('Copy of ', name), path, size, %d "
+        "FROM root_directory WHERE id=%d", uploaded_by, item_id);
+    return db_execute(conn, query);
+}
+
+int db_move_item(MYSQL* conn, int item_id, int new_group_id) {
+    char query[512];
+    snprintf(query, sizeof(query), "UPDATE root_directory SET group_id=%d WHERE id=%d", new_group_id, item_id);
+    return db_execute(conn, query);
 }
