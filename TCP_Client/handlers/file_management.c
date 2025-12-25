@@ -9,7 +9,7 @@
 
 static void list_files_in_group(int sockfd, int group_id) {
     char buffer[32768];
-    snprintf(buffer, sizeof(buffer), "LIST_FILES %d\n", group_id);
+    snprintf(buffer, sizeof(buffer), "LIST_FILES %d\r\n", group_id);
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
@@ -23,7 +23,7 @@ static void list_files_in_group(int sockfd, int group_id) {
 
 static int get_selected_file_id(int sockfd, int group_id) {
     char buffer[32768];
-    snprintf(buffer, sizeof(buffer), "LIST_FILES %d\n", group_id);
+    snprintf(buffer, sizeof(buffer), "LIST_FILES %d\r\n", group_id);
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
@@ -57,7 +57,7 @@ static int get_selected_file_id(int sockfd, int group_id) {
 
 static int get_selected_group_id(int sockfd) {
     char buffer[32768];
-    snprintf(buffer, sizeof(buffer), "LIST_MY_GROUPS\n");
+    snprintf(buffer, sizeof(buffer), "LIST_MY_GROUPS\r\n");
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
@@ -95,9 +95,9 @@ void handle_file_management(int sockfd) {
 
     char group_name[256] = "Unknown";
     char buffer[1024];
-    snprintf(buffer, sizeof(buffer), "GET_GROUP_NAME %d\n", group_id);
+    snprintf(buffer, sizeof(buffer), "GET_GROUP_NAME %d\r\n", group_id);
     send_all(sockfd, buffer, strlen(buffer));
-    recv_line(sockfd, group_name, sizeof(group_name));
+    recv_response(sockfd, group_name, sizeof(group_name));
 
     while (1) {
         printf("\n--- File Management (Group: %s) ---\n", group_name);
@@ -133,25 +133,25 @@ void handle_file_management(int sockfd) {
                 printf("Enter new name: ");
                 scanf("%255s", new_name);
                 while(getchar() != '\n');
-                snprintf(buffer, sizeof(buffer), "RENAME_FILE %d %s\n", file_id, new_name);
+                snprintf(buffer, sizeof(buffer), "RENAME_FILE %d %s\r\n", file_id, new_name);
                 send_all(sockfd, buffer, strlen(buffer));
-                recv_line(sockfd, resp, sizeof(resp));
+                recv_response(sockfd, resp, sizeof(resp));
                 printf("Server: %s\n", resp);
                 break;
             case 3:
                 file_id = get_selected_file_id(sockfd, group_id);
                 if (file_id == -1) break;
-                snprintf(buffer, sizeof(buffer), "DELETE_FILE %d\n", file_id);
+                snprintf(buffer, sizeof(buffer), "DELETE_FILE %d\r\n", file_id);
                 send_all(sockfd, buffer, strlen(buffer));
-                recv_line(sockfd, resp, sizeof(resp));
+                recv_response(sockfd, resp, sizeof(resp));
                 printf("Server: %s\n", resp);
                 break;
             case 4:
                 file_id = get_selected_file_id(sockfd, group_id);
                 if (file_id == -1) break;
-                snprintf(buffer, sizeof(buffer), "COPY_FILE %d\n", file_id);
+                snprintf(buffer, sizeof(buffer), "COPY_FILE %d\r\n", file_id);
                 send_all(sockfd, buffer, strlen(buffer));
-                recv_line(sockfd, resp, sizeof(resp));
+                recv_response(sockfd, resp, sizeof(resp));
                 printf("Server: %s\n", resp);
                 break;
             case 5:
@@ -164,9 +164,9 @@ void handle_file_management(int sockfd) {
                     break;
                 }
                 while(getchar() != '\n');
-                snprintf(buffer, sizeof(buffer), "MOVE_FILE %d %d\n", file_id, target_group);
+                snprintf(buffer, sizeof(buffer), "MOVE_FILE %d %d\r\n", file_id, target_group);
                 send_all(sockfd, buffer, strlen(buffer));
-                recv_line(sockfd, resp, sizeof(resp));
+                recv_response(sockfd, resp, sizeof(resp));
                 printf("Server: %s\n", resp);
                 break;
             default:

@@ -9,7 +9,7 @@ int db_user_exists(MYSQL* conn, const char* username) {
     if (!conn || !username) return -1;
     // Use a simple query with escaping to check existence to avoid stmt binding compatibility issues
     char esc[512];
-    unsigned long esc_len = mysql_real_escape_string(conn, esc, username, strlen(username));
+    mysql_real_escape_string(conn, esc, username, strlen(username)); // Quan: biến esc_len được khai báo để nhận giá trị trả về từ mysql_real_escape_string nhưng không được sử dụng ở các dòng 12 và 77, dẫn đến cảnh báo từ trình biên dịch.
 
     char sql[1024];
     snprintf(sql, sizeof(sql), "SELECT user_id FROM users WHERE username='%s' LIMIT 1", esc);
@@ -74,7 +74,7 @@ int db_verify_user(MYSQL* conn, const char* username, const char* password) {
 
     // escape username
     char esc[512];
-    unsigned long esc_len = mysql_real_escape_string(conn, esc, username, strlen(username));
+    mysql_real_escape_string(conn, esc, username, strlen(username));
 
     char sql[1024];
     snprintf(sql, sizeof(sql), "SELECT password FROM users WHERE username='%s' LIMIT 1", esc);

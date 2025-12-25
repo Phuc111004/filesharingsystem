@@ -85,7 +85,7 @@ void handle_join_group(int sockfd) {
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    recv_line(sockfd, buffer, sizeof(buffer));
+    recv_response(sockfd, buffer, sizeof(buffer));
     printf("Server: %s\n", buffer);
 }
 
@@ -101,6 +101,6 @@ void handle_leave_group(int sockfd) {
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    recv_line(sockfd, buffer, sizeof(buffer));
+    recv_response(sockfd, buffer, sizeof(buffer));
     printf("Server: %s\n", buffer);
 }

@@ -42,8 +42,28 @@ void trim_newline(char *s) {
 }
 
 /**
+ * Nhận một dòng từ socket, kết thúc bằng \n.
+ * Hỗ trợ nhận từng byte để đảm bảo không đọc quá 1 dòng.
+ */
+int recv_line(int sockfd, char *buf, size_t maxlen) {
+    if (!buf || maxlen == 0) return -1;
+    size_t total = 0;
+    while (total < maxlen - 1) {
+        char c;
+        ssize_t n = recv(sockfd, &c, 1, 0);
+        if (n <= 0) {
+            if (total == 0) return -1;
+            break;
+        }
+        if (c == '\n') break;
+        if (c != '\r') buf[total++] = c;
+    }
+    buf[total] = '\0';
+    return (int)total;
+}
+
+/**
  * Nhận phản hồi từ server (dạng block/chunk).
- * Thay thế cho recv_line cũ.
  */
 int recv_response(int sockfd, char *buf, size_t maxlen) {
     if (!buf || maxlen == 0) return -1;
