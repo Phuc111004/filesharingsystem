@@ -431,7 +431,7 @@ void* client_thread(void* arg) {
                     if (user_id == -1) perform_send_and_log(sock, line, "403 Login required\r\n");
                     else {
                         char resp[4096] = {0};
-                        dispatch_request(conn, user_id, line, resp);
+                        dispatch_request(conn, user_id, line, resp, sizeof(resp));
                         strcat(resp, "\r\n");
                         perform_send_and_log(sock, line, resp);
                     }

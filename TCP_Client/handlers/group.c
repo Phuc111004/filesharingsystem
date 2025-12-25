@@ -34,7 +34,7 @@ void handle_create_group(int sockfd) {
 
 // Handler for Join Group (Case 7)
 void handle_join_group(int sockfd) {
-    char buffer[16384];
+    char buffer[32768];
     
     // Request list of groups
     // [SỬA] Đổi \n thành \r\n
@@ -42,9 +42,7 @@ void handle_join_group(int sockfd) {
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    
-    // [SỬA] Thay recv_line bằng recv thường
-    ssize_t n = recv(sockfd, buffer, sizeof(buffer) - 1, 0);
+    int n = recv_response(sockfd, buffer, sizeof(buffer));
     if (n <= 0) {
         printf("Server disconnected.\n");
         return;
@@ -52,7 +50,11 @@ void handle_join_group(int sockfd) {
     buffer[n] = '\0';
     
     // Display groups
-    printf("\nAvailable Groups:\n%s\n", buffer);
+    if (is_error_response(buffer)) {
+        printf("%s\n", buffer);
+    } else {
+        printf("\nAvailable Groups:\n%s\n", buffer);
+    }
 
     if (strstr(buffer, "No joinable groups available.") != NULL) {
         return;
@@ -83,8 +85,8 @@ void handle_join_group(int sockfd) {
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    recv(sockfd, buffer, sizeof(buffer)-1, 0);
-    printf("Server: %s", buffer);
+    recv_response(sockfd, buffer, sizeof(buffer));
+    printf("Server: %s\n", buffer);
 }
 
 // Handler for Leave Group (Case 12)
@@ -99,6 +101,6 @@ void handle_leave_group(int sockfd) {
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    recv(sockfd, buffer, sizeof(buffer)-1, 0);
-    printf("Server: %s", buffer);
+    recv_response(sockfd, buffer, sizeof(buffer));
+    printf("Server: %s\n", buffer);
 }

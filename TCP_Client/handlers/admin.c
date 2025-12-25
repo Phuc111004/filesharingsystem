@@ -10,7 +10,7 @@
 
 // Handler for Invite User (Case 8)
 void handle_invite_user(int sockfd) {
-    char buffer[16384], user[128];
+    char buffer[32768], user[128];
     
     int selected_group_id = get_selected_admin_group(sockfd);
     if (selected_group_id == -1) return;
@@ -24,9 +24,19 @@ void handle_invite_user(int sockfd) {
     int n = recv_response(sockfd, buffer, sizeof(buffer));
     if (n <= 0) return;
     
-    printf("\nAvailable Users to Invite:\n%s\n", buffer);
+    if (is_error_response(buffer)) {
+        printf("%s\n", buffer);
+    } else {
+        printf("\nAvailable Users to Invite:\n%s\n", buffer);
+    }
     
-    if (strstr(buffer, "All users are already members") != NULL) return;
+    if (strstr(buffer, "All users are already members") != NULL) {
+        return;
+    }
+
+    if (is_error_response(buffer)) {
+        return;
+    }
     
     printf("Enter username to invite: ");
     scanf("%s", user);
@@ -42,7 +52,7 @@ void handle_invite_user(int sockfd) {
 
 // Handler for Kick Member (Case 11)
 void handle_kick_member(int sockfd) {
-    char buffer[16384], user[128];
+    char buffer[32768], user[128];
     
     int selected_group_id = get_selected_admin_group(sockfd);
     if (selected_group_id == -1) return;
@@ -56,9 +66,19 @@ void handle_kick_member(int sockfd) {
     int n = recv_response(sockfd, buffer, sizeof(buffer));
     if (n <= 0) return;
     
-    printf("\nGroup Members:\n%s\n", buffer);
+    if (is_error_response(buffer)) {
+        printf("%s\n", buffer);
+    } else {
+        printf("\nGroup Members:\n%s\n", buffer);
+    }
 
-    if (strstr(buffer, "No members") != NULL) return;
+    if (strstr(buffer, "No members") != NULL) {
+        return;
+    }
+
+    if (is_error_response(buffer)) {
+        return;
+    }
     
     printf("Enter username to kick: ");
     scanf("%s", user);

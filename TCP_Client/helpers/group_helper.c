@@ -8,7 +8,7 @@
 #include <sys/socket.h>
 
 int get_selected_admin_group(int sockfd) {
-    char buffer[16384];
+    char buffer[32768];
     
     // [SỬA] \n -> \r\n
     snprintf(buffer, sizeof(buffer), "LIST_ADMIN_GROUPS\r\n");
@@ -22,7 +22,11 @@ int get_selected_admin_group(int sockfd) {
         return -1;
     }
     
-    printf("\nYour Admin Groups:\n%s\n", buffer);
+    if (is_error_response(buffer)) {
+        printf("%s\n", buffer);
+    } else {
+        printf("\nYour Admin Groups:\n%s\n", buffer);
+    }
     
     int group_ids[100];
     int group_count = parse_ids_from_response(buffer, group_ids, 100, "[ID: ");
