@@ -42,7 +42,7 @@ void handle_join_group(int sockfd) {
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    int n = recv_multiline(sockfd, buffer, sizeof(buffer));
+    int n = recv_response(sockfd, buffer, sizeof(buffer));
     if (n <= 0) {
         printf("Server disconnected.\n");
         return;

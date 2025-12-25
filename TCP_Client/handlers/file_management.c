@@ -13,7 +13,7 @@ static void list_files_in_group(int sockfd, int group_id) {
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    recv_multiline(sockfd, buffer, sizeof(buffer));
+    recv_response(sockfd, buffer, sizeof(buffer));
     if (is_error_response(buffer)) {
         printf("%s\n", buffer);
     } else {
@@ -27,7 +27,7 @@ static int get_selected_file_id(int sockfd, int group_id) {
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    int n = recv_multiline(sockfd, buffer, sizeof(buffer));
+    int n = recv_response(sockfd, buffer, sizeof(buffer));
     if (n <= 0) return -1;
     buffer[n] = '\0';
 
@@ -61,7 +61,7 @@ static int get_selected_group_id(int sockfd) {
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    int n = recv_multiline(sockfd, buffer, sizeof(buffer));
+    int n = recv_response(sockfd, buffer, sizeof(buffer));
     if (n <= 0) return -1;
     buffer[n] = '\0';
 

@@ -42,27 +42,6 @@ void trim_newline(char *s) {
 }
 
 /**
- * Nhận một dòng từ socket, kết thúc bằng \n.
- * Hỗ trợ nhận từng byte để đảm bảo không đọc quá 1 dòng.
- */
-int recv_line(int sockfd, char *buf, size_t maxlen) {
-    if (!buf || maxlen == 0) return -1;
-    size_t total = 0;
-    while (total < maxlen - 1) {
-        char c;
-        ssize_t n = recv(sockfd, &c, 1, 0);
-        if (n <= 0) {
-            if (total == 0) return -1;
-            break;
-        }
-        if (c == '\n') break;
-        if (c != '\r') buf[total++] = c;
-    }
-    buf[total] = '\0';
-    return (int)total;
-}
-
-/**
  * Nhận phản hồi từ server (dạng block/chunk).
  */
 int recv_response(int sockfd, char *buf, size_t maxlen) {
@@ -73,58 +52,6 @@ int recv_response(int sockfd, char *buf, size_t maxlen) {
     
     buf[n] = '\0'; 
     return (int)n;
-}
-
-// Receives lines until an empty line is received, accumulating them into buf.
-// Returns total bytes received or -1 on error.
-int recv_multiline(int sockfd, char *buf, size_t maxlen) {
-    if (!buf || maxlen == 0) return -1;
-    
-    size_t total_len = 0;
-    buf[0] = '\0';
-    
-    char line_buf[4096];
-    while (1) {
-        // Peek at the buffer size safety
-        if (total_len >= maxlen - 1) {
-            printf("Buffer overflow in recv_multiline\n");
-            break; 
-        }
-
-        int n = recv_line(sockfd, line_buf, sizeof(line_buf));
-        if (n < 0) return -1; // Error
-        
-        size_t line_len = strlen(line_buf);
-
-        if (total_len == 0 && line_len > 0) {
-            if ((line_buf[0] == '4' || line_buf[0] == '5') && line_len >= 3) {
-                strncpy(buf, line_buf, maxlen - 1);
-                buf[maxlen - 1] = '\0';
-                return (int)strlen(buf);
-            }
-        }
-
-        if (line_len == 0) {
-           break; // End of transmission (Empty line received)
-        }
-        
-        if (n == 0) {
-           break; // Connection closed
-        }
-        
-        // Check for space
-        if (total_len + line_len + 2 > maxlen) {
-             printf("Buffer full, truncating...\n");
-             break;
-        }
-
-        memcpy(buf + total_len, line_buf, line_len);
-        total_len += line_len;
-        buf[total_len] = '\n';
-        total_len++;
-        buf[total_len] = '\0';
-    }
-    return (int)total_len;
 }
 
 int is_error_response(const char *response) {
