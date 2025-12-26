@@ -24,6 +24,12 @@ int db_group_exists_for_owner(MYSQL* conn, const char* group_name, int owner_use
 // Returns 0 on success, 1 if group exists for owner, -1 on error.
 int db_create_group(MYSQL* conn, const char* group_name, int owner_user_id, const char* root_path, int* out_group_id);
 
+// Access control helpers
+// Returns 1 nếu user là admin của group, 0 nếu không phải, -1 nếu lỗi
+int db_is_group_admin(MYSQL* conn, int user_id, int group_id);
+// Returns 1 nếu user là member (vai trò 'member'), 0 nếu không, -1 nếu lỗi
+int db_is_group_member(MYSQL* conn, int user_id, int group_id);
+
 
 // Add more prototypes for groups, requests, directories, logs...
 
