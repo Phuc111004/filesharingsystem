@@ -190,7 +190,7 @@ void run_client() {
                 break;
 
             case 5:  // List Groups
-                printf("Feature under development\n");
+                handle_list_groups(sockfd);
                 break;
 
             case 6:  // List Members
