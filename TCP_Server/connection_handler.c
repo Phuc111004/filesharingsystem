@@ -114,7 +114,7 @@ static void remove_logged_user(const char *username) {
  * @param raw_cmd The command received (for logging)
  * @param resp The response message to send
  */
-void perform_send_and_log(int sock, const char* raw_cmd, const char* resp) {
+void perform_send_and_log(int sock, const char* raw_cmd, const char* resp, const char* username) {
     if (!resp) return;
     time_t now = time(NULL);
     struct tm *t = localtime(&now);
@@ -138,6 +138,21 @@ void perform_send_and_log(int sock, const char* raw_cmd, const char* resp) {
 
     printf("[%s] CMD: %-20s | RESP: %s\n", time_str, cmd_clean, resp_clean);
     send(sock, resp, strlen(resp), 0);
+
+    if (username && strlen(username) > 0) {
+        char filename[512];
+        // Tạo tên file động: log_admin.txt, log_hieuthu2.txt...
+        snprintf(filename, sizeof(filename), "log_%s.txt", username);
+
+        FILE *f = fopen(filename, "a"); // Mode 'a': Ghi nối tiếp (append)
+        if (f) {
+            // Ghi theo định dạng: [Time] $ Command $ Response
+            fprintf(f, "[%s] $ %s $ %s\n", time_str, cmd_clean, resp_clean);
+            fclose(f);
+        } else {
+            perror("Cannot open log file");
+        }
+    }
 }
 
 // --- HELPER FUNCTIONS ---
@@ -179,10 +194,10 @@ void mkdir_p(const char *path) {
  * @param size_str File size as string
  */
 
-void handle_upload_request(int client_sock, const char *folder, const char *filename, const char *size_str, const char *residue_data, size_t residue_len) {
+void handle_upload_request(int client_sock, const char *folder, const char *filename, const char *size_str, const char *residue_data, size_t residue_len, const char *username) {
     long long filesize = atoll(size_str);
     if (filesize < 0) {
-        perform_send_and_log(client_sock, "UPLOAD", "400 Invalid size\r\n");
+        perform_send_and_log(client_sock, "UPLOAD", "400 Invalid size\r\n", username);
         return;
     }
 
@@ -199,13 +214,13 @@ void handle_upload_request(int client_sock, const char *folder, const char *file
 
     FILE *fp = fopen(full_path, "wb");
     if (!fp) {
-        perform_send_and_log(client_sock, log_info, "500 Create file failed\r\n");
+        perform_send_and_log(client_sock, log_info, "500 Create file failed\r\n", username);
         return;
     }
 
     // Gửi phản hồi sẵn sàng (dùng mã số define trong protocol.h hoặc hardcode tạm)
     // Giả sử RES_UPLOAD_READY là 150
-    perform_send_and_log(client_sock, log_info, "150 Ready\r\n");
+    perform_send_and_log(client_sock, log_info, "150 Ready\r\n", username);
 
     long long received = 0;
     int error = 0;
@@ -243,10 +258,10 @@ void handle_upload_request(int client_sock, const char *folder, const char *file
     free(buffer);
     fclose(fp);
 
-    if (!error && received == filesize) perform_send_and_log(client_sock, "UPLOAD_DATA", "200 Success\r\n");
+    if (!error && received == filesize) perform_send_and_log(client_sock, "UPLOAD_DATA", "200 Success\r\n", username);
     else {
         remove(full_path);
-        perform_send_and_log(client_sock, "UPLOAD_DATA", "501 Upload incomplete\r\n");
+        perform_send_and_log(client_sock, "UPLOAD_DATA", "501 Upload incomplete\r\n", username);
     }
 }
 
@@ -254,7 +269,7 @@ void handle_upload_request(int client_sock, const char *folder, const char *file
  * @function handle_download_request
  * Xử lý Download file
  */
-void handle_download_request(int client_sock, const char *folder, const char *filename) {
+void handle_download_request(int client_sock, const char *folder, const char *filename, const char *username) {
     char file_path[1024];
     if (folder && strlen(folder) > 0 && strcmp(folder, ".") != 0) {
         snprintf(file_path, sizeof(file_path), "storage/%s/%s", folder, filename);
@@ -264,7 +279,7 @@ void handle_download_request(int client_sock, const char *folder, const char *fi
 
     FILE *fp = fopen(file_path, "rb");
     if (!fp) {
-        perform_send_and_log(client_sock, "DOWNLOAD", "404 File not found\r\n");
+        perform_send_and_log(client_sock, "DOWNLOAD", "404 File not found\r\n", username);
         return;
     }
 
@@ -336,7 +351,7 @@ void* client_thread(void* arg) {
 
         if (acc_len + received >= sizeof(acc) - 1) {
             acc_len = 0; acc[0] = '\0';
-            perform_send_and_log(sock, "UNKNOWN", "300 Command too long\r\n");
+            perform_send_and_log(sock, "UNKNOWN", "300 Command too long\r\n", current_user);
             continue;
         }
 
@@ -362,24 +377,24 @@ void* client_thread(void* arg) {
 
                 // [AUTH COMMANDS]
                 if (strcmp(cmd, "LOGIN") == 0) {
-                    if (user_id != -1) perform_send_and_log(sock, line, "409 Already logged in\r\n");
+                    if (user_id != -1) perform_send_and_log(sock, line, "409 Already logged in\r\n", current_user);
                     else if (db_verify_user(conn, arg1, arg2) == 0) {
-                        if (is_logged_in(arg1)) perform_send_and_log(sock, line, "409 User logged in elsewhere\r\n");
+                        if (is_logged_in(arg1)) perform_send_and_log(sock, line, "409 User logged in elsewhere\r\n", current_user);
                         else {
                             add_logged_user(arg1);
                             strncpy(current_user, arg1, 127);
                             user_id = db_get_user_id_by_name(conn, arg1);
-                            perform_send_and_log(sock, line, "110 Login success\r\n");
+                            perform_send_and_log(sock, line, "110 Login success\r\n", current_user);
                         }
-                    } else perform_send_and_log(sock, line, "401 Login failed\r\n");
+                    } else perform_send_and_log(sock, line, "401 Login failed\r\n", current_user);
                 }
                 else if (strcmp(cmd, "REGISTER") == 0) {
                     char hash[512];
                     utils_hash_password(arg2, hash, sizeof(hash));
                     int res = db_create_user(conn, arg1, hash);
-                    if (res == 0) perform_send_and_log(sock, line, "201 Register success\r\n");
-                    else if (res == 1) perform_send_and_log(sock, line, "409 User exists\r\n");
-                    else perform_send_and_log(sock, line, "500 Register error\r\n");
+                    if (res == 0) perform_send_and_log(sock, line, "201 Register success\r\n", current_user);
+                    else if (res == 1) perform_send_and_log(sock, line, "409 User exists\r\n", current_user);
+                    else perform_send_and_log(sock, line, "500 Register error\r\n", current_user);
                 }
                 else if (strcmp(cmd, "LOGOUT") == 0) {
                     if (user_id != -1) {
@@ -387,12 +402,12 @@ void* client_thread(void* arg) {
                         user_id = -1;
                         memset(current_user, 0, sizeof(current_user));
                     }
-                    perform_send_and_log(sock, line, "202 Logout success\r\n");
+                    perform_send_and_log(sock, line, "202 Logout success\r\n", current_user);
                 }
                 // [GROUP COMMANDS]
                 else if (strcmp(cmd, "CREATE_GROUP") == 0) {
-                    if (user_id == -1) perform_send_and_log(sock, line, "403 Login required\r\n");
-                    else if (strlen(arg1) == 0) perform_send_and_log(sock, line, "400 Bad request\r\n");
+                    if (user_id == -1) perform_send_and_log(sock, line, "403 Login required\r\n", current_user);
+                    else if (strlen(arg1) == 0) perform_send_and_log(sock, line, "400 Bad request\r\n", current_user);
                     else {
                         struct stat st = {0};
                         if (stat("storage", &st) == -1) mkdir("storage", 0700);
@@ -402,9 +417,9 @@ void* client_thread(void* arg) {
 
                         int group_id_out = 0;
                         int cres = db_create_group(conn, arg1, user_id, group_path, &group_id_out);
-                        if (cres == 0) perform_send_and_log(sock, line, "200 Group created\r\n");
-                        else if (cres == 1) perform_send_and_log(sock, line, "409 Group exists\r\n");
-                        else perform_send_and_log(sock, line, "500 Group create error\r\n");
+                        if (cres == 0) perform_send_and_log(sock, line, "200 Group created\r\n", current_user);
+                        else if (cres == 1) perform_send_and_log(sock, line, "409 Group exists\r\n", current_user);
+                        else perform_send_and_log(sock, line, "500 Group create error\r\n", current_user);
                     }
                 }
                 // [UPLOAD COMMAND]
@@ -415,25 +430,25 @@ void* client_thread(void* arg) {
                     if (residue_len < 0) residue_len = 0;
 
                     // Gọi hàm upload (6 tham số)
-                    handle_upload_request(sock, arg1, arg2, arg3, residue_ptr, residue_len);
+                    handle_upload_request(sock, arg1, arg2, arg3, residue_ptr, residue_len, current_user);
 
                     // Reset buffer
                     acc_len = 0; acc[0] = '\0';
-                    break; 
+                    break;
                 }
                 // [DOWNLOAD COMMAND]
                 else if (strcmp(cmd, "DOWNLOAD") == 0) {
                      // arg1: filename, arg2: folder
-                     handle_download_request(sock, arg2, arg1);
+                     handle_download_request(sock, arg2, arg1, current_user);
                 }
                 // [OTHER COMMANDS]
                 else {
-                    if (user_id == -1) perform_send_and_log(sock, line, "403 Login required\r\n");
+                    if (user_id == -1) perform_send_and_log(sock, line, "403 Login required\r\n", current_user);
                     else {
                         char resp[4096] = {0};
                         dispatch_request(conn, user_id, line, resp);
                         strcat(resp, "\r\n");
-                        perform_send_and_log(sock, line, resp);
+                        perform_send_and_log(sock, line, resp, current_user);
                     }
                 }
             }
