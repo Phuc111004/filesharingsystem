@@ -113,41 +113,67 @@ static void remove_logged_user(const char *username) {
  * @param sock Client socket
  * @param raw_cmd The command received (for logging)
  * @param resp The response message to send
+ * @param username The username of the client (for logging)
  */
 void perform_send_and_log(int sock, const char* raw_cmd, const char* resp, const char* username) {
     if (!resp) return;
+    //không nhận được response từ server thì không log
     time_t now = time(NULL);
+    //giá trị của time_t là số giây kể từ epoch
+    //vì sao truyền NULL?
+    //
     struct tm *t = localtime(&now);
     char time_str[64];
     strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", t);
-
+    //time_str[]: buffer dùng để lưu chuỗi thời gian sau khi format
+    //Chuyển thời gian từ struct tm t sang chuỗi ký tự theo định dạng mong muốn
     char cmd_clean[256];
-    if (raw_cmd) {
-        strncpy(cmd_clean, raw_cmd, 255);
-        cmd_clean[255] = '\0';
-        char *nl = strchr(cmd_clean, '\n'); if (nl) *nl = '\0';
-        nl = strchr(cmd_clean, '\r'); if (nl) *nl = '\0';
+
+    if (raw_cmd != NULL) {
+        // Sao chép command từ client
+        strncpy(cmd_clean, raw_cmd, sizeof(cmd_clean) - 1);
+        cmd_clean[sizeof(cmd_clean) - 1] = '\0';
+
+        // Loại bỏ ký tự xuống dòng nếu có
+        char *pos;
+        pos = strchr(cmd_clean, '\n');
+        if (pos) *pos = '\0';
+
+        pos = strchr(cmd_clean, '\r');
+        if (pos) *pos = '\0';
     } else {
+        // Trường hợp lệnh nội bộ server
         strcpy(cmd_clean, "(Internal)");
     }
-
+    /* ================== LÀM SẠCH RESPONSE ================== */
     char resp_clean[256];
-    strncpy(resp_clean, resp, 255);
-    resp_clean[255] = '\0';
-    char *nl = strchr(resp_clean, '\n'); if (nl) *nl = '\0';
 
-    printf("[%s] CMD: %-20s | RESP: %s\n", time_str, cmd_clean, resp_clean);
+    strncpy(resp_clean, resp, sizeof(resp_clean) - 1);
+    resp_clean[sizeof(resp_clean) - 1] = '\0';
+
+    char *pos = strchr(resp_clean, '\n');
+    if (pos) *pos = '\0';
+
+    /* ================== IN LOG RA SERVER ================== */
+    printf("[%s] CMD: %-20s | RESP: %s\n",
+           time_str, cmd_clean, resp_clean);
+    /* ====================================================== */
+
+    /* ================== GỬI RESPONSE VỀ CLIENT ================== */
     send(sock, resp, strlen(resp), 0);
+    /* ============================================================ */
 
-    if (username && strlen(username) > 0) {
+    /* ================== GHI LOG THEO USER ================== */
+    if (username != NULL && strlen(username) > 0) {
+
         char filename[512];
-        // Tạo tên file động: log_admin.txt, log_hieuthu2.txt...
-        snprintf(filename, sizeof(filename), "log_%s.txt", username);
+        snprintf(filename, sizeof(filename),
+                 "log_%s.txt", username);
 
-        FILE *f = fopen(filename, "a"); // Mode 'a': Ghi nối tiếp (append)
-        if (f) {
-            // Ghi theo định dạng: [Time] $ Command $ Response
-            fprintf(f, "[%s] $ %s $ %s\n", time_str, cmd_clean, resp_clean);
+        FILE *f = fopen(filename, "a");
+        if (f != NULL) {
+            fprintf(f, "[%s] $ %s $ %s\n",
+                    time_str, cmd_clean, resp_clean);
             fclose(f);
         } else {
             perror("Cannot open log file");
