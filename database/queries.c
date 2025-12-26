@@ -9,7 +9,7 @@ int db_user_exists(MYSQL* conn, const char* username) {
     if (!conn || !username) return -1;
     // Use a simple query with escaping to check existence to avoid stmt binding compatibility issues
     char esc[512];
-    unsigned long esc_len = mysql_real_escape_string(conn, esc, username, strlen(username));
+    mysql_real_escape_string(conn, esc, username, strlen(username)); // Quan: biến esc_len được khai báo để nhận giá trị trả về từ mysql_real_escape_string nhưng không được sử dụng ở các dòng 12 và 77, dẫn đến cảnh báo từ trình biên dịch.
 
     char sql[1024];
     snprintf(sql, sizeof(sql), "SELECT user_id FROM users WHERE username='%s' LIMIT 1", esc);
@@ -74,7 +74,7 @@ int db_verify_user(MYSQL* conn, const char* username, const char* password) {
 
     // escape username
     char esc[512];
-    unsigned long esc_len = mysql_real_escape_string(conn, esc, username, strlen(username));
+    mysql_real_escape_string(conn, esc, username, strlen(username));
 
     char sql[1024];
     snprintf(sql, sizeof(sql), "SELECT password FROM users WHERE username='%s' LIMIT 1", esc);
@@ -273,4 +273,51 @@ int db_create_group(MYSQL* conn, const char* group_name, int owner_user_id, cons
     mysql_stmt_close(stmt_mem);
 
     return 0;
+}
+
+// --- Access control helpers ---
+// Trả về 1 nếu user là admin của group, 0 nếu không phải, -1 nếu lỗi.
+int db_is_group_admin(MYSQL* conn, int user_id, int group_id) {
+    if (!conn || user_id <= 0 || group_id <= 0) return -1;
+
+    char sql[256];
+    snprintf(sql, sizeof(sql),
+             "SELECT role FROM user_groups WHERE user_id=%d AND group_id=%d LIMIT 1",
+             user_id, group_id);
+
+    if (mysql_query(conn, sql) != 0) return -1;
+    MYSQL_RES *res = mysql_store_result(conn);
+    if (!res) return -1;
+
+    int is_admin = 0;
+    if (mysql_num_rows(res) > 0) {
+        MYSQL_ROW row = mysql_fetch_row(res);
+        if (row && row[0] && strcmp(row[0], "admin") == 0) is_admin = 1;
+    }
+
+    mysql_free_result(res);
+    return is_admin;
+}
+
+// Trả về 1 nếu user có vai trò 'member' trong group, 0 nếu không, -1 nếu lỗi.
+int db_is_group_member(MYSQL* conn, int user_id, int group_id) {
+    if (!conn || user_id <= 0 || group_id <= 0) return -1;
+
+    char sql[256];
+    snprintf(sql, sizeof(sql),
+             "SELECT role FROM user_groups WHERE user_id=%d AND group_id=%d LIMIT 1",
+             user_id, group_id);
+
+    if (mysql_query(conn, sql) != 0) return -1;
+    MYSQL_RES *res = mysql_store_result(conn);
+    if (!res) return -1;
+
+    int is_member = 0;
+    if (mysql_num_rows(res) > 0) {
+        MYSQL_ROW row = mysql_fetch_row(res);
+        if (row && row[0] && strcmp(row[0], "member") == 0) is_member = 1;
+    }
+
+    mysql_free_result(res);
+    return is_member;
 }

@@ -356,8 +356,6 @@ void* client_thread(void* arg) {
         }
 
         memcpy(acc + acc_len, recvbuf, received);
-        //copy dữ liệu mới nhận được (đang ở trong recvbuf) vào acc+acc_len 
-        //acc+acc_len là vị trí tiếp theo để ghi dữ liệu mới
         acc_len += received;
         acc[acc_len] = '\0';
 
@@ -365,20 +363,25 @@ void* client_thread(void* arg) {
         char *eol;
 
         while ((eol = strstr(line_start, "\r\n")) != NULL) {
-        //hàm strstr tìm tất cả chuỗi con "\r\n" trong acc, trả về con trỏ đến vị trí đầu tiên của chuỗi con
             *eol = '\0';
             char *line = line_start;
-            //line trỏ tới đầu dòng lệnh vừa được cắt ra để xử lý
 
             if (strlen(line) > 0) {
-                //khai báo các buffer để lưu command và tham số từ dòng lệnh mà client nhập vào
                 char cmd[32] = {0}, arg1[256] = {0}, arg2[256] = {0}, arg3[256] = {0};
-                parse_command_line(line, cmd, sizeof(cmd), arg1, sizeof(arg1), arg2, sizeof(arg2), arg3, sizeof(arg3));
+                int parsed = sscanf(line, "%31s %255s %255s %255s", cmd, arg1, arg2, arg3);
+
+                if (parsed <= 0) {
+                    line_start = eol + 2;
+                    continue;
+                }
 
                 // [AUTH COMMANDS]
-                if (strcmp(cmd, "LOGIN") == 0) {
-                    if (user_id != -1) perform_send_and_log(sock, line, "409 Already logged in\r\n", current_user);
-                    else if (db_verify_user(conn, arg1, arg2) == 0) {
+                if (strcmp(cmd, STR_LOGIN) == 0) {
+                    if (parsed < 3) {
+                        perform_send_and_log(sock, line, "400 Bad request\r\n", current_user);
+                    } else if (user_id != -1) {
+                        perform_send_and_log(sock, line, "409 Already logged in\r\n", current_user);
+                    } else if (db_verify_user(conn, arg1, arg2) == 0) {
                         if (is_logged_in(arg1)) perform_send_and_log(sock, line, "409 User logged in elsewhere\r\n", current_user);
                         else {
                             add_logged_user(arg1);
@@ -386,17 +389,23 @@ void* client_thread(void* arg) {
                             user_id = db_get_user_id_by_name(conn, arg1);
                             perform_send_and_log(sock, line, "110 Login success\r\n", current_user);
                         }
-                    } else perform_send_and_log(sock, line, "401 Login failed\r\n", current_user);
+                    } else {
+                        perform_send_and_log(sock, line, "401 Login failed\r\n", current_user);
+                    }
                 }
-                else if (strcmp(cmd, "REGISTER") == 0) {
-                    char hash[512];
-                    utils_hash_password(arg2, hash, sizeof(hash));
-                    int res = db_create_user(conn, arg1, hash);
-                    if (res == 0) perform_send_and_log(sock, line, "201 Register success\r\n", current_user);
-                    else if (res == 1) perform_send_and_log(sock, line, "409 User exists\r\n", current_user);
-                    else perform_send_and_log(sock, line, "500 Register error\r\n", current_user);
+                else if (strcmp(cmd, STR_REGISTER) == 0) {
+                    if (parsed < 3) {
+                        perform_send_and_log(sock, line, "400 Bad request\r\n", current_user);
+                    } else {
+                        char hash[512];
+                        utils_hash_password(arg2, hash, sizeof(hash));
+                        int res = db_create_user(conn, arg1, hash);
+                        if (res == 0) perform_send_and_log(sock, line, "201 Register success\r\n", current_user);
+                        else if (res == 1) perform_send_and_log(sock, line, "409 User exists\r\n", current_user);
+                        else perform_send_and_log(sock, line, "500 Register error\r\n", current_user);
+                    }
                 }
-                else if (strcmp(cmd, "LOGOUT") == 0) {
+                else if (strcmp(cmd, STR_LOGOUT) == 0) {
                     if (user_id != -1) {
                         remove_logged_user(current_user);
                         user_id = -1;
@@ -405,9 +414,9 @@ void* client_thread(void* arg) {
                     perform_send_and_log(sock, line, "202 Logout success\r\n", current_user);
                 }
                 // [GROUP COMMANDS]
-                else if (strcmp(cmd, "CREATE_GROUP") == 0) {
-                    if (user_id == -1) perform_send_and_log(sock, line, "403 Login required\r\n", current_user);
-                    else if (strlen(arg1) == 0) perform_send_and_log(sock, line, "400 Bad request\r\n", current_user);
+                else if (strcmp(cmd, STR_CREATE_GROUP) == 0) {
+                    if (parsed < 2) perform_send_and_log(sock, line, "400 Bad request\r\n", current_user);
+                    else if (user_id == -1) perform_send_and_log(sock, line, "403 Login required\r\n", current_user);
                     else {
                         struct stat st = {0};
                         if (stat("storage", &st) == -1) mkdir("storage", 0700);
@@ -423,11 +432,9 @@ void* client_thread(void* arg) {
                     }
                 }
                 // [UPLOAD COMMAND]
-                else if (strcmp(cmd, "UPLOAD") == 0) {
-                    // Tính toán dữ liệu thừa
+                else if (strcmp(cmd, STR_UPLOAD) == 0) {
                     char *residue_ptr = eol + 2;
-                    size_t residue_len = (acc + acc_len) - residue_ptr;
-                    if (residue_len < 0) residue_len = 0;
+                    size_t residue_len = (size_t)((acc + acc_len) - residue_ptr);
 
                     // Gọi hàm upload (6 tham số)
                     handle_upload_request(sock, arg1, arg2, arg3, residue_ptr, residue_len, current_user);
@@ -437,8 +444,7 @@ void* client_thread(void* arg) {
                     break;
                 }
                 // [DOWNLOAD COMMAND]
-                else if (strcmp(cmd, "DOWNLOAD") == 0) {
-                     // arg1: filename, arg2: folder
+                 else if (strcmp(cmd, STR_DOWNLOAD) == 0) {
                      handle_download_request(sock, arg2, arg1, current_user);
                 }
                 // [OTHER COMMANDS]
@@ -446,7 +452,7 @@ void* client_thread(void* arg) {
                     if (user_id == -1) perform_send_and_log(sock, line, "403 Login required\r\n", current_user);
                     else {
                         char resp[4096] = {0};
-                        dispatch_request(conn, user_id, line, resp);
+                        dispatch_request(conn, user_id, line, resp, sizeof(resp));
                         strcat(resp, "\r\n");
                         perform_send_and_log(sock, line, resp, current_user);
                     }

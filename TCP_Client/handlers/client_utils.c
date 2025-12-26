@@ -31,6 +31,7 @@ int parse_ids_from_response(char *response, int *ids, int max_count, const char 
     return count;
 }
 
+// Helper to remove trailing newlines
 void trim_newline(char *s) {
     if (!s) return;
     size_t len = strlen(s);
@@ -42,7 +43,6 @@ void trim_newline(char *s) {
 
 /**
  * Nhận phản hồi từ server (dạng block/chunk).
- * Thay thế cho recv_line cũ.
  */
 int recv_response(int sockfd, char *buf, size_t maxlen) {
     if (!buf || maxlen == 0) return -1;
@@ -52,4 +52,15 @@ int recv_response(int sockfd, char *buf, size_t maxlen) {
     
     buf[n] = '\0'; 
     return (int)n;
+}
+
+int is_error_response(const char *response) {
+    if (!response || strlen(response) < 3) return 0;
+    // Check if starts with 4xx or 5xx
+    if ((response[0] == '4' || response[0] == '5') && 
+        (response[1] >= '0' && response[1] <= '9') &&
+        (response[2] >= '0' && response[2] <= '9')) {
+        return 1;
+    }
+    return 0;
 }

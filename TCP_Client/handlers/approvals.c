@@ -9,7 +9,7 @@
 
 // Handler for Approve Request (Case 9)
 void handle_approve_request(int sockfd) {
-    char buffer[16384];
+    char buffer[32768];
     
     // [SỬA] \n -> \r\n
     snprintf(buffer, sizeof(buffer), "LIST_JOIN_REQUESTS\r\n");
@@ -23,7 +23,11 @@ void handle_approve_request(int sockfd) {
         return;
     }
     
-    printf("\nPending Join Requests:\n%s\n", buffer);
+    if (is_error_response(buffer)) {
+        printf("%s\n", buffer);
+    } else {
+        printf("\nPending Join Requests:\n%s\n", buffer);
+    }
     
     int req_ids[100];
     int req_count = parse_ids_from_response(buffer, req_ids, 100, "[ReqID: ");
@@ -54,7 +58,7 @@ void handle_approve_request(int sockfd) {
 
 // Handler for Accept Invitation (Case 10)
 void handle_accept_invitation(int sockfd) {
-    char buffer[16384];
+    char buffer[32768];
     
     // [SỬA] \n -> \r\n
     snprintf(buffer, sizeof(buffer), "LIST_MY_INVITATIONS\r\n");
@@ -68,7 +72,11 @@ void handle_accept_invitation(int sockfd) {
         return;
     }
     
-    printf("\nYour Pending Invitations:\n%s\n", buffer);
+    if (is_error_response(buffer)) {
+        printf("%s\n", buffer);
+    } else {
+        printf("\nYour Pending Invitations:\n%s\n", buffer);
+    }
     
     int inv_ids[100];
     int inv_count = parse_ids_from_response(buffer, inv_ids, 100, "[InvID: ");
