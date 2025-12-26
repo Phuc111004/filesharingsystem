@@ -79,6 +79,9 @@ void dispatch_request(MYSQL *db, int current_user_id, char *buffer, char *respon
     else if (strcmp(cmd, "MOVE_FILE") == 0) {
         handle_move_file(db, current_user_id, arg1, arg2, response, maxlen);
     }
+    else if (strcmp(cmd, "LIST_USER_GROUPS") == 0) {
+        db_list_user_groups(db, current_user_id, response, 4096);
+    }
     else {
         snprintf(response, maxlen, "400 Unknown Command");
     }

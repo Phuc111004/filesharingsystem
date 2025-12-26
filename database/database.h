@@ -41,6 +41,7 @@ int db_rename_item(MYSQL* conn, int item_id, const char* new_name);
 int db_delete_item(MYSQL* conn, int item_id);
 int db_copy_item(MYSQL* conn, int item_id, int uploaded_by);
 int db_move_item(MYSQL* conn, int item_id, int new_group_id);
+void db_list_user_groups(MYSQL* conn, int user_id, char* buffer, size_t size);
 
 
 #endif // DATABASE_H

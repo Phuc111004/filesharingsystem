@@ -89,6 +89,24 @@ void handle_join_group(int sockfd) {
     printf("Server: %s\n", buffer);
 }
 
+// Handler for List Groups (Case 5)
+void handle_list_groups(int sockfd) {
+    char buffer[16384];
+
+    snprintf(buffer, sizeof(buffer), "LIST_USER_GROUPS\n");
+    send_all(sockfd, buffer, strlen(buffer));
+
+    memset(buffer, 0, sizeof(buffer));
+    ssize_t n = recv_line(sockfd, buffer, sizeof(buffer));
+    if (n <= 0) {
+        printf("Server disconnected.\n");
+        return;
+    }
+    buffer[n] = '\0';
+
+    printf("\nYour Groups:\n%s\n", buffer);
+}
+
 // Handler for Leave Group (Case 12)
 void handle_leave_group(int sockfd) {
     char buffer[4096], group_id[16];

@@ -550,3 +550,37 @@ int db_move_item(MYSQL* conn, int item_id, int new_group_id) {
     snprintf(query, sizeof(query), "UPDATE root_directory SET group_id=%d WHERE id=%d", new_group_id, item_id);
     return db_execute(conn, query);
 }
+
+void db_list_user_groups(MYSQL* conn, int user_id, char* buffer, size_t size) {
+    char query[1024];
+    snprintf(query, sizeof(query),
+        "SELECT g.group_id, g.group_name, u.username "
+        "FROM `groups` g "
+        "JOIN user_groups ug ON g.group_id = ug.group_id "
+        "JOIN users u ON g.created_by = u.user_id "
+        "WHERE ug.user_id = %d "
+        "ORDER BY g.group_id", user_id);
+
+    if (mysql_query(conn, query)) {
+        snprintf(buffer, size, "Error querying your groups.");
+        return;
+    }
+
+    MYSQL_RES *res = mysql_store_result(conn);
+    MYSQL_ROW row;
+
+    strcpy(buffer, "");
+    int count = 0;
+    while ((row = mysql_fetch_row(res))) {
+          if (count > 0) strncat(buffer, "\n", size - strlen(buffer) - 1);
+          char line[256];
+        count++;
+        snprintf(line, sizeof(line), "[%d] %s (Admin: %s)",
+                  count, row[1], row[2]);
+        strncat(buffer, line, size - strlen(buffer) - 1);
+    }
+
+    if (count == 0) strcpy(buffer, "You are not in any groups.");
+    mysql_free_result(res);
+}
+
