@@ -1,0 +1,52 @@
+[2025-12-28 22:29:32] $ LOGIN quanna 123456 $ 110 Login success
+[2025-12-28 22:29:35] $ LIST_MY_GROUPS $ [1] Group Cua Quan [ID: 2]
+[2025-12-28 22:29:39] $ GET_GROUP_NAME 2 $ Group Cua Quan
+[2025-12-28 22:29:42] $ LIST_FILES 2 $ No files available in this group.
+[2025-12-28 22:33:11] $ LOGIN quanna 123456 $ 110 Login success
+[2025-12-28 22:33:34] $ CREATE_GROUP Test_Group $ 200 Group created
+[2025-12-28 22:40:38] $ UPLOAD Test_Group test.webp 57196 $ 150 Ready
+[2025-12-28 22:40:38] $ UPLOAD_DATA $ 200 Success
+[2025-12-28 22:40:55] $ LIST_MY_GROUPS $ [1] Group Cua Quan [ID: 2]
+[2025-12-28 22:40:58] $ GET_GROUP_NAME 4 $ Group
+[2025-12-28 22:41:00] $ LIST_FILES 4 $ [1] Group (Size: 0 bytes) [ID: 1]
+[2025-12-28 22:41:28] $ MOVE_FILE 1 1 $ 500 Move failed
+[2025-12-28 22:41:40] $ LIST_MY_GROUPS $ [1] Group Cua Quan [ID: 2]
+[2025-12-28 22:41:45] $ GET_GROUP_NAME 5 $ Test_Group
+[2025-12-28 22:41:46] $ LIST_FILES 5 $ [1] Test_Group (Size: 0 bytes) [ID: 2]
+[2025-12-28 23:27:56] $ LOGIN quanna 123456 $ 110 Login success
+[2025-12-28 23:28:00] $ LIST_MY_GROUPS $ [1] Group Cua Quan [ID: 2]
+[2025-12-28 23:28:02] $ GET_GROUP_NAME 2 $ Group Cua Quan
+[2025-12-28 23:28:21] $ LIST_FILES 2 $ 400 Unknown Command
+[2025-12-28 23:35:54] $ LOGIN quanna 123456 $ 110 Login success
+[2025-12-28 23:35:57] $ LIST_MY_GROUPS $ [1] Group Cua Quan [ID: 2]
+[2025-12-28 23:35:58] $ GET_GROUP_NAME 2 $ Group Cua Quan
+[2025-12-28 23:36:25] $ LIST_FILE 2 0 $ 100 List:
+[2025-12-28 23:37:07] $ LOGIN quanna 123456 $ 110 Login success
+[2025-12-28 23:37:09] $ LIST_MY_GROUPS $ [1] Group Cua Quan [ID: 2]
+[2025-12-28 23:37:10] $ GET_GROUP_NAME 2 $ Group Cua Quan
+[2025-12-28 23:48:18] $ LOGIN quanna 123456 $ 110 Login success
+[2025-12-28 23:48:47] $ LIST_MY_GROUPS $ [1] Group Cua Quan [ID: 2]
+[2025-12-28 23:48:50] $ GET_GROUP_NAME 5 $ Test_Group
+[2025-12-28 23:49:38] $ UPLOAD Test_Group test.webp 57196 $ 150 Ready
+[2025-12-28 23:49:38] $ UPLOAD_DATA $ 200 Upload success
+[2025-12-28 23:50:32] $ LIST_MY_GROUPS $ [1] Group Cua Quan [ID: 2]
+[2025-12-28 23:51:44] $ GET_GROUP_NAME 5 $ Test_Group
+[2025-12-28 23:51:57] $ LIST_FILE 5 0 $ 100 List:
+[2025-12-29 00:05:33] $ LOGIN quanna 123456 $ 110 Login success
+[2025-12-29 00:05:44] $ LOGIN quanna 123456 $ 409 Already logged in
+[2025-12-29 00:06:16] $ CREATE_GROUP Quandz $ 200 Group created
+[2025-12-29 00:06:55] $ LOGIN quanna 123456 $ 110 Login success
+[2025-12-29 00:11:44] $ LIST_MY_GROUPS $ [1] Quandz [ID: 6]
+[2025-12-29 00:11:45] $ GET_GROUP_NAME 6 $ Quandz
+[2025-12-29 00:11:51] $ LIST_FILE 6 0 $ 100 List:
+[2025-12-29 00:13:38] $ MKDIR 6 folder1 0 $ 500 Server error
+[2025-12-29 00:22:13] $ LOGIN quanna 123456 $ 110 Login success
+[2025-12-29 00:22:19] $ LIST_MY_GROUPS $ [1] Quandz [ID: 6]
+[2025-12-29 00:22:22] $ GET_GROUP_NAME 6 $ Quandz
+[2025-12-29 00:22:32] $ MKDIR 6 folder1 0 $ 200 OK
+[2025-12-29 00:36:58] $ UPLOAD Quandz/folder1 test.webp 57196 $ 150 Ready
+[2025-12-29 00:36:58] $ UPLOAD_DATA $ 200 Upload success
+[2025-12-29 00:37:12] $ LIST_MY_GROUPS $ [1] Quandz [ID: 6]
+[2025-12-29 00:37:14] $ GET_GROUP_NAME 6 $ Quandz
+[2025-12-29 00:37:24] $ LIST_FILE 6 0 $ 100 List:
+[2025-12-29 00:37:48] $ RENAME 6 4 folder2 $ 200 OK
