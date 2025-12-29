@@ -117,24 +117,18 @@ static void remove_logged_user(const char *username) {
  */
 void perform_send_and_log(int sock, const char* raw_cmd, const char* resp, const char* username) {
     if (!resp) return;
-    //không nhận được response từ server thì không log
     time_t now = time(NULL);
-    //giá trị của time_t là số giây kể từ epoch
-    //vì sao truyền NULL?
-    //
+    
     struct tm *t = localtime(&now);
     char time_str[64];
     strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", t);
-    //time_str[]: buffer dùng để lưu chuỗi thời gian sau khi format
-    //Chuyển thời gian từ struct tm t sang chuỗi ký tự theo định dạng mong muốn
-    char cmd_clean[256];
 
+    char cmd_clean[256];
     if (raw_cmd != NULL) {
-        // Sao chép command từ client
         strncpy(cmd_clean, raw_cmd, sizeof(cmd_clean) - 1);
         cmd_clean[sizeof(cmd_clean) - 1] = '\0';
 
-        // Loại bỏ ký tự xuống dòng nếu có
+        // Khai báo con trỏ để tìm ký tự xuống dòng
         char *pos;
         pos = strchr(cmd_clean, '\n');
         if (pos) *pos = '\0';
@@ -142,10 +136,9 @@ void perform_send_and_log(int sock, const char* raw_cmd, const char* resp, const
         pos = strchr(cmd_clean, '\r');
         if (pos) *pos = '\0';
     } else {
-        // Trường hợp lệnh nội bộ server
-        strcpy(cmd_clean, "(Internal)");
+        strcpy(cmd_clean, "Error: NULL command");
     }
-    /* ================== LÀM SẠCH RESPONSE ================== */
+
     char resp_clean[256];
 
     strncpy(resp_clean, resp, sizeof(resp_clean) - 1);
@@ -154,30 +147,24 @@ void perform_send_and_log(int sock, const char* raw_cmd, const char* resp, const
     char *pos = strchr(resp_clean, '\n');
     if (pos) *pos = '\0';
 
-    /* ================== IN LOG RA SERVER ================== */
     printf("[%s] CMD: %-20s | RESP: %s\n",
            time_str, cmd_clean, resp_clean);
-    /* ====================================================== */
 
-    /* ================== GỬI RESPONSE VỀ CLIENT ================== */
-    send(sock, resp, strlen(resp), 0);
-    /* ============================================================ */
+    if (send_all(sock, resp, strlen(resp)) <= 0) {
+        perror("send_all response failed");
+    }
 
-    /* ================== GHI LOG THEO USER ================== */
-    if (username != NULL && strlen(username) > 0) {
+    const char *logfile = "server_log.txt";
 
-        char filename[512];
-        snprintf(filename, sizeof(filename),
-                 "log_%s.txt", username);
+    FILE *f = fopen(logfile, "a");
+    if (f != NULL) {
+        const char *user = (username && username[0] != '\0') ? username : "-";
 
-        FILE *f = fopen(filename, "a");
-        if (f != NULL) {
-            fprintf(f, "[%s] $ %s $ %s\n",
-                    time_str, cmd_clean, resp_clean);
-            fclose(f);
-        } else {
-            perror("Cannot open log file");
-        }
+        fprintf(f, "[%s] user=%s $ %s $ %s\n",
+                time_str, user, cmd_clean, resp_clean);
+        fclose(f);
+    } else {
+        perror("Cannot open server log file");
     }
 }
 
@@ -329,8 +316,8 @@ void handle_download_request(int client_sock, const char *folder, const char *fi
     
     size_t n;
     while ((n = fread(buffer, 1, CHUNK_SIZE, fp)) > 0) {
-        if (send(client_sock, buffer, n, 0) == -1) {
-            perror("Send file error");
+        if (send_all(client_sock, buffer, n) < 0) {
+            perror("send_all error");
             break;
         }
     }
@@ -347,11 +334,10 @@ void handle_download_request(int client_sock, const char *folder, const char *fi
  * * @param arg Pointer to the client socket descriptor
  * @return void*
  */
-//CODE SỬA ĐỔI: Xử lý truyền dòng (Buffer tích lũy)
 void* client_thread(void* arg) {
     int sock = *(int*)arg;
     free(arg);
-
+    
     MYSQL *conn = db_connect();
     if (!conn) {
         send(sock, "500 DB Error\r\n", 14, 0);
@@ -360,12 +346,9 @@ void* client_thread(void* arg) {
     }
 
     char recvbuf[BUFFER_SIZE];
-    //buffer tạm cho từng lần recv
-    //lần recv sau -> dữ liệu cũ bị ghi đè
-    char acc[LINE_MAX]; 
-    //buffer tích lũy, lưu dữ liệu từ nhiều lần recv
+    char acc[LINE_MAX];
 
-    size_t acc_len = 0; //số byte hiện có trong acc
+    size_t acc_len = 0;
     acc[0] = '\0';
 
     char current_user[128] = {0};
@@ -396,6 +379,7 @@ void* client_thread(void* arg) {
                 char cmd[32] = {0}, arg1[256] = {0}, arg2[256] = {0}, arg3[256] = {0};
                 int parsed = sscanf(line, "%31s %255s %255s %255s", cmd, arg1, arg2, arg3);
 
+                //sscanf trả về số lượng tham số đọc được
                 if (parsed <= 0) {
                     line_start = eol + 2;
                     continue;
@@ -457,6 +441,7 @@ void* client_thread(void* arg) {
                         else perform_send_and_log(sock, line, "500 Group create error\r\n", current_user);
                     }
                 }
+
                 // [UPLOAD COMMAND]
                 else if (strcmp(cmd, STR_UPLOAD) == 0) {
                     char *residue_ptr = eol + 2;
@@ -470,7 +455,7 @@ void* client_thread(void* arg) {
                     break;
                 }
                 // [DOWNLOAD COMMAND]
-                 else if (strcmp(cmd, STR_DOWNLOAD) == 0) {
+                else if (strcmp(cmd, STR_DOWNLOAD) == 0) {
                      handle_download_request(sock, arg2, arg1, current_user);
                 }
                 // [OTHER COMMANDS]
@@ -490,16 +475,13 @@ void* client_thread(void* arg) {
         if (acc_len == 0) continue;
 
         size_t processed = line_start - acc;
-        //line_start hiện tại trỏ tới vị trí sau dấu \r\n cuối cùng đã xử lý
-        //acc trỏ tới đầu buffer tích lũy
         size_t remaining = acc_len - processed;
-        //remaining là số byte còn lại chưa xử lý trong acc
-        //processed là số byte đã xử lý
         memmove(acc, line_start, remaining);
+        
         acc_len = remaining;
         acc[acc_len] = '\0';
     }
-
+    
     if (user_id != -1) remove_logged_user(current_user);
     db_close(conn);
     close(sock);

@@ -84,18 +84,8 @@ void handle_upload_client(int sockfd) {
 
     // 2. Nhận phản hồi "150 Ready" (Thay recv_line bằng recv_response)
     char response[256];
-    // recv_response nhận cả khối phản hồi thay vì từng ký tự
     if (recv_response(sockfd, response, sizeof(response)) <= 0) {
         printf("Server disconnected.\n");
-        fclose(fp);
-        return;
-    }
-
-    // Kiểm tra mã 150 (Server sẵn sàng)
-    int code = 0;
-    sscanf(response, "%d", &code);
-    if (code != 150) { // RES_UPLOAD_READY
-        printf("Server Error: %s\n", response);
         fclose(fp);
         return;
     }
@@ -113,9 +103,10 @@ void handle_upload_client(int sockfd) {
     // Vòng lặp gửi dữ liệu
     while (1) {
         size_t n = fread(buffer, 1, CHUNK_SIZE, fp);
-        if (n <= 0) break;
-        if (send(sockfd, buffer, n, 0) < 0) {
-            perror("Send error");
+        if (n == 0) break;
+
+        if (send_all(sockfd, buffer, n) < 0) {
+            perror("send_all error");
             break;
         }
     }
@@ -184,52 +175,56 @@ void run_client() {
                 // Gọi hàm nội bộ trong file này
                 handle_upload_client(sockfd);
                 break;
+            
+            case 4:  // Download
+                // handle_download_client(sockfd);
+                break;
 
-            case 4:  // Create Group
+            case 5:  // Create Group
                 handle_create_group(sockfd);
                 break;
 
-            case 5:  // List Groups
+            case 6:  // List Groups
                 handle_list_groups(sockfd);
                 break;
 
-            case 6:  // List Members
+            case 7:  // List Members
                 printf("Feature under development\n");
                 break;
 
-            case 7:  // Join Group
+            case 8:  // Join Group
                 handle_join_group(sockfd);
                 break;
 
-            case 8:  // Invite User
+            case 9:  // Invite User
                 handle_invite_user(sockfd);
                 break;
 
-            case 9:  // Approve Request
+            case 10:  // Approve Request
                 handle_approve_request(sockfd);
                 break;
 
-            case 10: // Accept Invitation
+            case 11: // Accept Invitation
                 handle_accept_invitation(sockfd);
                 break;
 
-            case 11: // Kick Member
+            case 12: // Kick Member
                 handle_kick_member(sockfd);
                 break;
 
-            case 12: // Leave Group
+            case 13: // Leave Group
                 handle_leave_group(sockfd);
                 break;
 
-            case 13: // Logout
+            case 14: // Logout
                 handle_logout(sockfd);
                 break;
 
-            case 14: // File Management
+            case 15: // File Management
                 handle_file_management(sockfd);
                 break;
 
-            case 15: // Exit
+            case 16: // Exit
                 close(sockfd);
                 return;
 

@@ -1,0 +1,5 @@
+[2025-12-29 06:22:44] user=son $ LOGIN son 123 $ 110 Login success
+[2025-12-29 06:23:54] user=son $ LIST_MY_GROUPS $ You are not a member of any groups.
+[2025-12-29 06:24:14] user=son $ LOGIN thai 123 $ 409 Already logged in
+[2025-12-29 06:24:21] user=- $ LOGOUT $ 202 Logout success
+[2025-12-29 06:24:36] user=- $ LOGIN thai 123 $ 401 Login failed
