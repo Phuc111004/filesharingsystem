@@ -198,7 +198,7 @@ int db_create_group(MYSQL* conn, const char* group_name, int owner_user_id, cons
     if (out_group_id) *out_group_id = group_id;
 
     // Insert root directory record
-    const char *sql_root = "INSERT INTO root_directory (group_id, name, path, size, uploaded_by) VALUES (?, ?, ?, 0, ?);";
+    const char *sql_root = "INSERT INTO root_directory (group_id, name, path, size, uploaded_by, is_folder, parent_id) VALUES (?, ?, ?, 0, ?, TRUE, NULL);";
     MYSQL_STMT *stmt_root = mysql_stmt_init(conn);
     if (!stmt_root) return -1;
     if (mysql_stmt_prepare(stmt_root, sql_root, strlen(sql_root)) != 0) {

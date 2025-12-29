@@ -188,23 +188,7 @@ void parse_command_line(const char *line, char *cmd, size_t cmd_sz, char *arg1, 
     sscanf(line, "%s %s %s %s", cmd, arg1, arg2, arg3);
 }
 
-/**
- * @function mkdir_p
- * Creates a directory path recursively.
- * Example: "storage/data/img" -> creates "storage", then "storage/data", then "storage/data/img"
- * * @param path The directory path to create
- */
-void mkdir_p(const char *path) {
-    char temp[1024];
-    snprintf(temp, sizeof(temp), "%s", path);
-    size_t len = strlen(temp);
-    for (int i = 0; i < len; i++) {
-        if (temp[i] == '/') {
-            temp[i] = '\0'; mkdir(temp, 0700); temp[i] = '/';
-        }
-    }
-    mkdir(temp, 0700);
-}
+// mkdir_p is now in common/utils.c
 
 /**
  * @function handle_upload_request
@@ -284,7 +268,7 @@ void handle_upload_request(int client_sock, const char *folder, const char *file
     free(buffer);
     fclose(fp);
 
-    if (!error && received == filesize) perform_send_and_log(client_sock, "UPLOAD_DATA", "200 Success\r\n", username);
+    if (!error && received == filesize) perform_send_and_log(client_sock, "UPLOAD_DATA", "200 Upload success\r\n", username);
     else {
         remove(full_path);
         perform_send_and_log(client_sock, "UPLOAD_DATA", "501 Upload incomplete\r\n", username);
@@ -314,7 +298,7 @@ void handle_download_request(int client_sock, const char *folder, const char *fi
     fseek(fp, 0, SEEK_SET);
 
     char header[256];
-    // Dùng mã 102 cho Download start
+    // Protocol Image: 102 <filesize>
     snprintf(header, sizeof(header), "102 %lld\r\n", filesize);
     send(client_sock, header, strlen(header), 0);
 
