@@ -491,16 +491,24 @@ void db_list_joinable_groups(MYSQL* conn, int user_id, char* buffer, size_t size
     mysql_free_result(res);
 }
 
-void db_list_files(MYSQL* conn, int group_id, char* buffer, size_t size) {
+void db_list_files(MYSQL* conn, int group_id, int parent_id, char* buffer, size_t size) {
     char query[1024];
+    char parent_condition[64];
+    
+    if (parent_id <= 0) {
+        strcpy(parent_condition, "parent_id IS NULL");
+    } else {
+        snprintf(parent_condition, sizeof(parent_condition), "parent_id = %d", parent_id);
+    }
+
     snprintf(query, sizeof(query),
-        "SELECT id, name, path, size, uploaded_at "
+        "SELECT id, name, path, size, is_folder, parent_id "
         "FROM root_directory "
-        "WHERE group_id = %d AND is_deleted = FALSE "
-        "ORDER BY name", group_id);
+        "WHERE group_id = %d AND %s AND is_deleted = FALSE "
+        "ORDER BY is_folder DESC, name", group_id, parent_condition);
     
     if (mysql_query(conn, query)) {
-        snprintf(buffer, size, "Error querying files.");
+        snprintf(buffer, size, "Error querying items.");
         return;
     }
     
@@ -513,15 +521,31 @@ void db_list_files(MYSQL* conn, int group_id, char* buffer, size_t size) {
         if (count > 0) strncat(buffer, "\n", size - strlen(buffer) - 1);
         char line[512];
         count++;
-        // Format: [num] Name (Size: bytes) [ID: id]
-        snprintf(line, sizeof(line), "[%d] %s (Size: %s bytes) [ID: %s]", 
-                 count, row[1], row[3], row[0]);
+        int is_folder = atoi(row[4]);
+        const char *type = is_folder ? "FOLDER" : "FILE";
+        const char *size_val = is_folder ? "0" : row[3];
+        snprintf(line, sizeof(line), "%s %s %s [ID: %s]", type, row[1], size_val, row[0]);
         strncat(buffer, line, size - strlen(buffer) - 1);
     }
     
-    if (count == 0) strcpy(buffer, "No files available in this group.");
-    strncat(buffer, "\n", size - strlen(buffer) - 1);
+    if (count == 0) strcpy(buffer, "No items available in this directory.");
     mysql_free_result(res);
+}
+
+int db_create_folder(MYSQL* conn, int group_id, const char* name, const char* path, int uploaded_by, int parent_id) {
+    char query[2048];
+    if (parent_id <= 0) {
+        snprintf(query, sizeof(query), 
+            "INSERT INTO root_directory (group_id, name, path, size, uploaded_by, is_folder, parent_id) "
+            "VALUES (%d, '%s', '%s', 0, %d, TRUE, NULL)", 
+            group_id, name, path, uploaded_by);
+    } else {
+        snprintf(query, sizeof(query), 
+            "INSERT INTO root_directory (group_id, name, path, size, uploaded_by, is_folder, parent_id) "
+            "VALUES (%d, '%s', '%s', 0, %d, TRUE, %d)", 
+            group_id, name, path, uploaded_by, parent_id);
+    }
+    return db_execute(conn, query);
 }
 
 int db_rename_item(MYSQL* conn, int item_id, const char* new_name) {
@@ -536,18 +560,29 @@ int db_delete_item(MYSQL* conn, int item_id) {
     return db_execute(conn, query);
 }
 
-int db_copy_item(MYSQL* conn, int item_id, int uploaded_by) {
+int db_copy_item(MYSQL* conn, int item_id, int uploaded_by, int dest_parent_id) {
     char query[2048];
+    char parent_sql[32];
+    if (dest_parent_id <= 0) {
+        strcpy(parent_sql, "NULL");
+    } else {
+        snprintf(parent_sql, sizeof(parent_sql), "%d", dest_parent_id);
+    }
+
     snprintf(query, sizeof(query), 
-        "INSERT INTO root_directory (group_id, name, path, size, uploaded_by) "
-        "SELECT group_id, CONCAT('Copy of ', name), path, size, %d "
-        "FROM root_directory WHERE id=%d", uploaded_by, item_id);
+        "INSERT INTO root_directory (group_id, name, path, size, uploaded_by, is_folder, parent_id) "
+        "SELECT group_id, CONCAT('Copy of ', name), path, size, %d, is_folder, %s "
+        "FROM root_directory WHERE id=%d", uploaded_by, parent_sql, item_id);
     return db_execute(conn, query);
 }
 
-int db_move_item(MYSQL* conn, int item_id, int new_group_id) {
+int db_move_item(MYSQL* conn, int item_id, int new_group_id, int new_parent_id) {
     char query[512];
-    snprintf(query, sizeof(query), "UPDATE root_directory SET group_id=%d WHERE id=%d", new_group_id, item_id);
+    if (new_parent_id <= 0) {
+        snprintf(query, sizeof(query), "UPDATE root_directory SET group_id=%d, parent_id=NULL WHERE id=%d", new_group_id, item_id);
+    } else {
+        snprintf(query, sizeof(query), "UPDATE root_directory SET group_id=%d, parent_id=%d WHERE id=%d", new_group_id, new_parent_id, item_id);
+    }
     return db_execute(conn, query);
 }
 

@@ -82,13 +82,17 @@ CREATE TABLE IF NOT EXISTS `root_directory` (
 	`path` TEXT NOT NULL,
 	`size` BIGINT NOT NULL DEFAULT 0,
 	`uploaded_by` INT DEFAULT NULL,
+	`is_folder` BOOLEAN NOT NULL DEFAULT FALSE,
+	`parent_id` INT DEFAULT NULL,
 	`is_deleted` BOOLEAN NOT NULL DEFAULT FALSE,
 	`uploaded_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	`updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 	PRIMARY KEY (`id`),
 	KEY `idx_root_directory_group` (`group_id`),
+	KEY `idx_root_directory_parent` (`parent_id`),
 	CONSTRAINT `fk_root_directory_group` FOREIGN KEY (`group_id`) REFERENCES `groups`(`group_id`) ON DELETE CASCADE,
-	CONSTRAINT `fk_root_directory_uploaded_by` FOREIGN KEY (`uploaded_by`) REFERENCES `users`(`user_id`) ON DELETE SET NULL
+	CONSTRAINT `fk_root_directory_uploaded_by` FOREIGN KEY (`uploaded_by`) REFERENCES `users`(`user_id`) ON DELETE SET NULL,
+	CONSTRAINT `fk_root_directory_parent` FOREIGN KEY (`parent_id`) REFERENCES `root_directory`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 

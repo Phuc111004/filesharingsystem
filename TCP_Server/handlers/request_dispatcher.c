@@ -10,9 +10,10 @@ void dispatch_request(MYSQL *db, int current_user_id, char *buffer, char *respon
     char cmd[32] = {0};
     char arg1[256] = {0};
     char arg2[256] = {0};
+    char arg3[256] = {0};
     
     // Parse command
-    int n = sscanf(buffer, "%s %255s %255s", cmd, arg1, arg2);
+    int n = sscanf(buffer, "%s %255s %255s %255s", cmd, arg1, arg2, arg3);
     if (n < 1) return;
 
     if (strcmp(cmd, "JOIN_REQ") == 0) {
@@ -64,20 +65,29 @@ void dispatch_request(MYSQL *db, int current_user_id, char *buffer, char *respon
         db_get_group_name(db, group_id, response, maxlen);
     }
     // --- File Management ---
-    else if (strcmp(cmd, "LIST_FILES") == 0) {
-        handle_list_files(db, current_user_id, arg1, response, maxlen);
+    else if (strcmp(cmd, "LIST_FILE") == 0) {
+        handle_list_files(db, current_user_id, arg1, arg2, response, maxlen);
     }
-    else if (strcmp(cmd, "RENAME_FILE") == 0) {
-        handle_rename_file(db, current_user_id, arg1, arg2, response, maxlen);
+    else if (strcmp(cmd, "MKDIR") == 0) {
+        handle_create_folder(db, current_user_id, arg1, arg2, arg3, response, maxlen);
     }
-    else if (strcmp(cmd, "DELETE_FILE") == 0) {
-        handle_delete_file(db, current_user_id, arg1, response, maxlen);
+    else if (strcmp(cmd, "COPY") == 0) {
+        handle_copy_file(db, current_user_id, arg1, arg2, arg3, response, maxlen);
     }
-    else if (strcmp(cmd, "COPY_FILE") == 0) {
-        handle_copy_file(db, current_user_id, arg1, response, maxlen);
+    else if (strcmp(cmd, "DELETE") == 0) {
+        handle_delete_file(db, current_user_id, arg1, arg2, response, maxlen);
     }
-    else if (strcmp(cmd, "MOVE_FILE") == 0) {
-        handle_move_file(db, current_user_id, arg1, arg2, response, maxlen);
+    else if (strcmp(cmd, "RENAME") == 0) {
+        handle_rename_file(db, current_user_id, arg1, arg2, arg3, response, maxlen);
+    }
+    else if (strcmp(cmd, "MOVE") == 0) {
+        handle_move_file(db, current_user_id, arg1, arg2, arg3, response, maxlen);
+    }
+    else if (strcmp(cmd, "DOWNLOAD") == 0) {
+        // Handled in connection_handler.c loop for binary streaming, 
+        // but dispatcher might need to handle errors or headers.
+        // For now, we'll let connection_handler handle the STR_DOWNLOAD.
+        snprintf(response, maxlen, "501 Use Stream Protocol");
     }
     else if (strcmp(cmd, "LIST_USER_GROUPS") == 0) {
         db_list_user_groups(db, current_user_id, response, 4096);
