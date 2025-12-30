@@ -157,6 +157,32 @@ int db_is_group_admin(MYSQL* conn, int user_id, int group_id) {
     return is_admin;
 }
 
+int db_get_group_id_for_user_by_name(MYSQL* conn, int user_id, const char* group_name) {
+    if (!conn || !group_name || user_id <= 0) return -1;
+    char esc_name[512];
+    unsigned long esc_len = mysql_real_escape_string(conn, esc_name, group_name, strlen(group_name));
+    esc_name[esc_len] = '\0';
+
+    char query[1024];
+    // Chỉ trả về group mà user đang tham gia (thành viên hoặc admin/creator)
+    snprintf(query, sizeof(query),
+        "SELECT g.group_id FROM `groups` g "
+        "LEFT JOIN user_groups ug ON g.group_id = ug.group_id AND ug.user_id = %d "
+        "WHERE g.group_name='%s' AND (g.created_by=%d OR ug.user_id IS NOT NULL) "
+        "LIMIT 1",
+        user_id, esc_name, user_id);
+
+    if (mysql_query(conn, query)) return -1;
+    MYSQL_RES *res = mysql_store_result(conn);
+    if (!res) return -1;
+
+    MYSQL_ROW row = mysql_fetch_row(res);
+    int group_id = 0;
+    if (row && row[0]) group_id = atoi(row[0]);
+    mysql_free_result(res);
+    return group_id; // 0 => not found
+}
+
 int db_get_user_id_by_name(MYSQL* conn, const char* username) {
     char query[256];
     sprintf(query, "SELECT user_id FROM users WHERE username='%s'", username);
@@ -376,6 +402,44 @@ void db_list_group_members(MYSQL* conn, int group_id, char* buffer, size_t size)
     if (count == 0) strcpy(buffer, "No members to kick (only admins in group).");
     // Append trailing newline for multi-line protocol
     strncat(buffer, "\n", size - strlen(buffer) - 1);
+    mysql_free_result(res);
+}
+
+void db_list_group_members_with_roles(MYSQL* conn, int group_id, char* buffer, size_t size) {
+    char query[1024];
+    snprintf(query, sizeof(query),
+        "SELECT u.username, ug.role "
+        "FROM user_groups ug "
+        "JOIN users u ON ug.user_id = u.user_id "
+        "WHERE ug.group_id = %d "
+        "ORDER BY (ug.role='admin') DESC, u.username",
+        group_id);
+
+    if (mysql_query(conn, query)) {
+        snprintf(buffer, size, "500 Error querying members.");
+        return;
+    }
+
+    MYSQL_RES *res = mysql_store_result(conn);
+    if (!res) {
+        snprintf(buffer, size, "500 Error querying members.");
+        return;
+    }
+
+    strcpy(buffer, "");
+    int count = 0;
+    MYSQL_ROW row;
+    while ((row = mysql_fetch_row(res))) {
+        if (count > 0) strncat(buffer, "\n", size - strlen(buffer) - 1);
+        char line[256];
+        count++;
+        snprintf(line, sizeof(line), "[%d] %s %s", count, row[0], row[1]);
+        strncat(buffer, line, size - strlen(buffer) - 1);
+    }
+
+    if (count == 0) snprintf(buffer, size, "No members in this group.");
+    else strncat(buffer, "\n", size - strlen(buffer) - 1);
+
     mysql_free_result(res);
 }
 

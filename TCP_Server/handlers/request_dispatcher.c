@@ -2,6 +2,7 @@
 #include "group_handlers.h"
 #include "file_handlers.h"
 #include "../../database/database.h"
+#include "../../common/protocol.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,9 +45,8 @@ void dispatch_request(MYSQL *db, int current_user_id, char *buffer, char *respon
         int group_id = atoi(arg1);
         db_list_non_members(db, group_id, response, maxlen);
     }
-    else if (strcmp(cmd, "LIST_MEMBERS") == 0) {
-        int group_id = atoi(arg1);
-        db_list_group_members(db, group_id, response, maxlen);
+    else if (strcmp(cmd, STR_LIST_MEMBERS) == 0) {
+        handle_list_group_members(db, current_user_id, arg1, response, maxlen);
     }
     else if (strcmp(cmd, "LIST_JOIN_REQUESTS") == 0) {
         db_list_join_requests_for_admin(db, current_user_id, response, maxlen);
