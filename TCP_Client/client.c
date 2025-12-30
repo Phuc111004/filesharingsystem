@@ -221,12 +221,13 @@ void run_client() {
                 handle_leave_group(sockfd);
                 break;
 
-            case 13: // Logout
-                handle_logout(sockfd);
+            case 13: // File Management
+                handle_file_management(sockfd);
+                
                 break;
 
-            case 14: // File Management
-                handle_file_management(sockfd);
+            case 14: // Logout
+                handle_logout(sockfd);
                 break;
 
             case 15: // Exit

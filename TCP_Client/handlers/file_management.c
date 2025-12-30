@@ -156,10 +156,10 @@ void handle_file_management(int sockfd) {
         printf("2. Enter Folder\n");
         printf("3. Go to Root\n");
         printf("4. Create Folder (MKDIR)\n");
-        printf("5. Rename Item\n");
-        printf("6. Delete Item\n");
-        printf("7. Copy Item\n");
-        printf("8. Move Item\n");
+        printf("5. Rename File/Folder\n");
+        printf("6. Delete File/Folder\n");
+        printf("7. Copy File/Folder\n");
+        printf("8. Move File/Folder\n");
         printf("9. Back to Main Menu\n");
         printf("Select: ");
 
