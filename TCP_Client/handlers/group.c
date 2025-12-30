@@ -106,6 +106,45 @@ void handle_list_groups(int sockfd) {
     printf("\nYour Groups:\n%s\n", buffer);
 }
 
+// Handler for List Group Members (Case 6)
+void handle_list_group_members(int sockfd) {
+    char buffer[32768];
+    char group_name[256];
+
+    // B1: List user's groups
+    snprintf(buffer, sizeof(buffer), "LIST_USER_GROUPS\r\n");
+    send_all(sockfd, buffer, strlen(buffer));
+
+    memset(buffer, 0, sizeof(buffer));
+    int n = recv_response(sockfd, buffer, sizeof(buffer));
+    if (n <= 0) {
+        printf("Server disconnected.\n");
+        return;
+    }
+    buffer[n] = '\0';
+    printf("\nYour Groups:\n%s\n", buffer);
+
+    // B2: Prompt for group name
+    int c; while ((c = getchar()) != '\n' && c != EOF) {} // clear newline
+    printf("Enter group name: ");
+    if (!fgets(group_name, sizeof(group_name), stdin)) return;
+    trim_newline(group_name);
+    if (strlen(group_name) == 0) return;
+
+    // B3: Send LIST_MEM <group_name>
+    snprintf(buffer, sizeof(buffer), "LIST_MEM %s\r\n", group_name);
+    send_all(sockfd, buffer, strlen(buffer));
+
+    memset(buffer, 0, sizeof(buffer));
+    n = recv_response(sockfd, buffer, sizeof(buffer));
+    if (n <= 0) {
+        printf("Server disconnected.\n");
+        return;
+    }
+    buffer[n] = '\0';
+    printf("\n%s\n", buffer);
+}
+
 // Handler for Leave Group (Case 12)
 void handle_leave_group(int sockfd) {
     char buffer[4096], group_id[16];

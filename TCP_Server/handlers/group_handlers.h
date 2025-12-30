@@ -27,4 +27,7 @@ void handle_kick_member(MYSQL *db, int current_user_id, const char *arg1, const 
 // Handle INVITE <username> <group_id>
 void handle_invite_user(MYSQL *db, int current_user_id, const char *arg1, const char *arg2, char *response, size_t maxlen);
 
+// Handle LIST_MEM <group_name>
+void handle_list_group_members(MYSQL *db, int current_user_id, const char *group_name, char *response, size_t maxlen);
+
 #endif
