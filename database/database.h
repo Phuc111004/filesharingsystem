@@ -44,6 +44,12 @@ int db_delete_item(MYSQL* conn, int item_id);
 int db_copy_item(MYSQL* conn, int item_id, int uploaded_by, int dest_parent_id);
 int db_move_item(MYSQL* conn, int item_id, int new_group_id, int new_parent_id);
 void db_list_user_groups(MYSQL* conn, int user_id, char* buffer, size_t size);
+int db_add_file(MYSQL* conn, int group_id, const char* name, const char* path, long long size, int uploaded_by, int parent_id);
 
+// Hàm quan trọng mới: Dịch đường dẫn "Group/Folder/..." thành ID
+// return_type: 0 = lấy ID thư mục cuối (để upload), 1 = lấy ID file cuối (để download)
+// Trả về: ID tìm được, hoặc -1 nếu lỗi/không tìm thấy.
+// Output: Ghi group_id tìm được vào biến con trỏ *out_group_id
+int db_resolve_path(MYSQL* conn, const char* full_path, int return_type, int *out_group_id);
 
 #endif // DATABASE_H
