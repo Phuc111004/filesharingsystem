@@ -24,9 +24,7 @@ void handle_create_group(int sockfd) {
     send_all(sockfd, buffer, strlen(buffer));
 
     memset(buffer, 0, sizeof(buffer));
-    
-    // [SỬA] Thay recv_line bằng recv thường
-    ssize_t n = recv(sockfd, buffer, sizeof(buffer) - 1, 0);
+    int n = recv_response(sockfd, buffer, sizeof(buffer));
     if (n > 0) buffer[n] = '\0';
     
     printf("Server: %s", buffer);
