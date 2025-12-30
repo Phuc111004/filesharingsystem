@@ -9,4 +9,8 @@ int recv_response(int sockfd, char *buf, size_t maxlen);
 int is_error_response(const char *response);
 void trim_newline(char *s);
 
+// Group and folder selection helpers
+int get_selected_group_id(int sockfd);
+int get_selected_folder_id(int sockfd, int group_id, const char *prompt);
+
 #endif
