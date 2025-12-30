@@ -7,8 +7,7 @@
 // Handle JOIN_REQ <group_id>
 void handle_join_req(MYSQL *db, int current_user_id, const char *arg1, char *response, size_t maxlen);
 
-// Handle LEAVE_GROUP <group_id>
-// Handle LEAVE_GROUP <group_id>
+// Handle LEAVE_GROUP <group_name>
 void handle_leave_group(MYSQL *db, int current_user_id, const char *arg1, char *response, size_t maxlen);
 
 // Handle LIST_REQ <group_id>
