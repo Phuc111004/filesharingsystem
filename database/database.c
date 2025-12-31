@@ -982,6 +982,44 @@ int db_resolve_path(MYSQL* conn, const char* full_path, int return_type, int *ou
     }
 }
 
+int db_get_file_path_by_info(MYSQL* conn, int group_id, int parent_id, const char* name, char* out_path, size_t out_size) {
+    char query[1024];
+    char esc_name[256];
+    mysql_real_escape_string(conn, esc_name, name, strlen(name));
+
+    char parent_cond[64];
+    if (parent_id <= 0) {
+        // Try to get root_id for the group if parent_id is not specified correctly from client
+        // In the new system, parent_id should be the actual parent or root_id.
+        // If parent_id is 0, it means it's at the group level.
+        int root_id = db_get_group_root_id(conn, group_id);
+        snprintf(parent_cond, sizeof(parent_cond), "parent_id = %d", root_id);
+    } else {
+        snprintf(parent_cond, sizeof(parent_cond), "parent_id = %d", parent_id);
+    }
+
+    snprintf(query, sizeof(query), 
+        "SELECT path FROM root_directory WHERE group_id=%d AND name='%s' AND %s AND is_folder=FALSE AND is_deleted=FALSE",
+        group_id, esc_name, parent_cond);
+
+    if (mysql_query(conn, query)) return -1;
+    MYSQL_RES *res = mysql_store_result(conn);
+    if (!res) return -1;
+
+    if (mysql_num_rows(res) == 0) {
+        mysql_free_result(res);
+        return -1;
+    }
+
+    MYSQL_ROW row = mysql_fetch_row(res);
+    if (row && row[0]) {
+        strncpy(out_path, row[0], out_size - 1);
+        out_path[out_size - 1] = '\0';
+    }
+    mysql_free_result(res);
+    return 0;
+}
+
 int db_get_group_root_id(MYSQL* conn, int group_id) {
     char query[256];
     snprintf(query, sizeof(query), "SELECT root_dir_id FROM `groups` WHERE group_id = %d", group_id);

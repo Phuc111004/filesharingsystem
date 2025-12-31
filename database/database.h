@@ -58,6 +58,9 @@ int db_add_file(MYSQL* conn, int group_id, const char* name, const char* path, l
 // Output: Ghi group_id tìm được vào biến con trỏ *out_group_id
 int db_resolve_path(MYSQL* conn, const char* full_path, int return_type, int *out_group_id);
 
+// Get physical file path from database
+int db_get_file_path_by_info(MYSQL* conn, int group_id, int parent_id, const char* name, char* out_path, size_t out_size);
+
 // Get root directory ID for a group
 int db_get_group_root_id(MYSQL* conn, int group_id);
 

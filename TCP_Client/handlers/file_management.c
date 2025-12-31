@@ -228,7 +228,7 @@ void handle_file_management(int sockfd) {
                 printf("New folder name: ");
                 scanf("%255s", name_arg);
                 while(getchar() != '\n');
-                snprintf(buffer, sizeof(buffer), "MKDIR %d %s %d\r\n", group_id, name_arg, current_folder_id);
+                snprintf(buffer, sizeof(buffer), "MKDIR %d \"%s\" %d\r\n", group_id, name_arg, current_folder_id);
                 send_all(sockfd, buffer, strlen(buffer));
                 recv_response(sockfd, resp, sizeof(resp));
                 trim_newline(resp);
@@ -243,7 +243,7 @@ void handle_file_management(int sockfd) {
                 printf("New name: ");
                 scanf("%255s", name_arg);
                 while(getchar() != '\n');
-                snprintf(buffer, sizeof(buffer), "RENAME %d %d %s\r\n", group_id, item_id, name_arg);
+                snprintf(buffer, sizeof(buffer), "RENAME %d %d \"%s\"\r\n", group_id, item_id, name_arg);
                 send_all(sockfd, buffer, strlen(buffer));
                 recv_response(sockfd, resp, sizeof(resp));
                 trim_newline(resp);

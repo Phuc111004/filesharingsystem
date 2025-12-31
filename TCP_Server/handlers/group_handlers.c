@@ -18,14 +18,24 @@ void handle_join_req(MYSQL *db, int current_user_id, const char *arg1, char *res
     }
 }
 
-void handle_leave_group(MYSQL *db, int current_user_id, const char *group_name, char *response, size_t maxlen) {
-    // LEAVE_GROUP <group_name>
-    if (!group_name || strlen(group_name) == 0) {
+void handle_leave_group(MYSQL *db, int current_user_id, const char *arg, char *response, size_t maxlen) {
+    // LEAVE_GROUP <group_name/id>
+    if (!arg || strlen(arg) == 0) {
         snprintf(response, maxlen, "400 Bad request");
         return;
     }
 
-    int group_id = db_get_group_id_for_user_by_name(db, current_user_id, group_name);
+    int group_id = 0;
+    int is_id = 1;
+    for (int i = 0; arg[i]; i++) {
+        if (arg[i] < '0' || arg[i] > '9') { is_id = 0; break; }
+    }
+
+    if (is_id) {
+        group_id = atoi(arg);
+    } else {
+        group_id = db_get_group_id_for_user_by_name(db, current_user_id, arg);
+    }
     if (group_id == -1) {
         snprintf(response, maxlen, "500 Internal Server Error");
         return;
@@ -152,13 +162,24 @@ void handle_invite_user(MYSQL *db, int current_user_id, const char *arg1, const 
     }
 }
 
-void handle_list_group_members(MYSQL *db, int current_user_id, const char *group_name, char *response, size_t maxlen) {
-    if (!group_name || strlen(group_name) == 0) {
+void handle_list_group_members(MYSQL *db, int current_user_id, const char *arg, char *response, size_t maxlen) {
+    if (!arg || strlen(arg) == 0) {
         snprintf(response, maxlen, "400 Bad request");
         return;
     }
 
-    int group_id = db_get_group_id_for_user_by_name(db, current_user_id, group_name);
+    int group_id = 0;
+    int is_id = 1;
+    for (int i = 0; arg[i]; i++) {
+        if (arg[i] < '0' || arg[i] > '9') { is_id = 0; break; }
+    }
+
+    if (is_id) {
+        group_id = atoi(arg);
+        // Optional: verify membership? db_list_group_members_with_roles will only return data if id exists.
+    } else {
+        group_id = db_get_group_id_for_user_by_name(db, current_user_id, arg);
+    }
     if (group_id == -1) {
         snprintf(response, maxlen, "500 Internal Server Error");
         return;

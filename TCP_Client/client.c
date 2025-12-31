@@ -83,7 +83,7 @@ void handle_upload_client(int sockfd) {
 
     // 1. Gửi lệnh UPLOAD với format mới: group_id/parent_id
     char header[1024];
-    snprintf(header, sizeof(header), "UPLOAD %d/%d %s %lld\r\n", 
+    snprintf(header, sizeof(header), "UPLOAD %d/%d \"%s\" %lld\r\n", 
              group_id, folder_id, get_filename(filepath), filesize);
     
     if (send_all(sockfd, header, strlen(header)) < 0) {
@@ -245,7 +245,7 @@ void handle_download_client(int sockfd) {
 
     // Send download command with new format
     char cmd[512];
-    snprintf(cmd, sizeof(cmd), "DOWNLOAD %d/%d %s\r\n", group_id, current_folder_id, selected_filename);
+    snprintf(cmd, sizeof(cmd), "DOWNLOAD %d/%d \"%s\"\r\n", group_id, current_folder_id, selected_filename);
 
     if (send_all(sockfd, cmd, strlen(cmd)) < 0) {
         perror("send_all DOWNLOAD command failed");
@@ -304,6 +304,11 @@ void handle_download_client(int sockfd) {
         printf("Download incomplete (%lld/%lld bytes)\n", received, filesize);
         remove(full_local_path);
     }
+
+    // NEW: Consume the final "200 File sent successfully" message
+    char final_resp[1024];
+    memset(final_resp, 0, sizeof(final_resp));
+    recv_response(sockfd, final_resp, sizeof(final_resp));
 }
 
 void handle_list_directory(int sockfd) {

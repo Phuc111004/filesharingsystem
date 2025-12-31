@@ -3,19 +3,18 @@
 #include "file_handlers.h"
 #include "../../database/database.h"
 #include "../../common/protocol.h"
+#include "../../common/utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-void dispatch_request(MYSQL *db, int current_user_id, char *buffer, char *response, size_t maxlen) {
-    char cmd[32] = {0};
-    char arg1[256] = {0};
-    char arg2[256] = {0};
-    char arg3[256] = {0};
-    
-    // Parse command
-    int n = sscanf(buffer, "%s %255s %255s %255s", cmd, arg1, arg2, arg3);
+void dispatch_request(MYSQL *db, int current_user_id, int n, char **argv, char *response, size_t maxlen) {
     if (n < 1) return;
+
+    char *cmd = argv[0];
+    char *arg1 = (n > 1) ? argv[1] : "";
+    char *arg2 = (n > 2) ? argv[2] : "";
+    char *arg3 = (n > 3) ? argv[3] : "";
 
     if (strcmp(cmd, "JOIN_REQ") == 0) {
         handle_join_req(db, current_user_id, arg1, response, maxlen);

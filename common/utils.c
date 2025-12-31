@@ -34,3 +34,29 @@ void mkdir_p(const char *path) {
     }
     mkdir(temp, 0700);
 }
+
+int split_args(char *line, char **args, int max_args) {
+    int count = 0;
+    char *p = line;
+
+    while (*p && count < max_args) {
+        // Skip whitespace
+        while (*p && *p == ' ') p++;
+        if (!*p) break;
+
+        if (*p == '"') {
+            p++; // Skip opening quote
+            args[count++] = p;
+            while (*p && *p != '"') p++;
+        } else {
+            args[count++] = p;
+            while (*p && *p != ' ') p++;
+        }
+
+        if (*p) {
+            *p = '\0'; // Terminate token
+            p++;
+        }
+    }
+    return count;
+}
