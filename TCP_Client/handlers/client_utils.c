@@ -107,8 +107,8 @@ int get_selected_group_id(int sockfd) {
 int get_selected_folder_id(int sockfd, int group_id, const char *prompt) {
     printf("\n%s\n", prompt ? prompt : "Select destination folder:");
     
-    int current_folder_id = 0; // Start at root
-    char current_folder_name[256] = "Root";
+    int current_folder_id = 0; // Start at group level
+    char current_folder_name[256] = "Group";
     
     while (1) {
         // List current folder contents
@@ -120,7 +120,11 @@ int get_selected_folder_id(int sockfd, int group_id, const char *prompt) {
         int n = recv_response(sockfd, buffer, sizeof(buffer));
         if (n <= 0) return -1;
         
-        printf("\nCurrent Folder: %s (ID: %d)\n", current_folder_name, current_folder_id);
+        if (current_folder_id == 0) {
+            printf("\nCurrent: Group\n");
+        } else {
+            printf("\nCurrent Folder: %s\n", current_folder_name);
+        }
         printf("Contents:\n%s\n", buffer);
         
         // Parse folders only
@@ -156,9 +160,13 @@ int get_selected_folder_id(int sockfd, int group_id, const char *prompt) {
         
         // Show options
         printf("\nOptions:\n");
-        printf("0. Select this folder (ID: %d)\n", current_folder_id);
+        if (current_folder_id == 0) {
+            printf("0. Upload here (Group level)\n");
+        } else {
+            printf("0. Upload here (%s)\n", current_folder_name);
+        }
         if (current_folder_id != 0) {
-            printf("1. Go back to parent\n");
+            printf("1. Go back\n");
         }
         for (int i = 0; i < folder_count; i++) {
             printf("%d. Enter folder: %s\n", i + 2, folder_names[i]);
@@ -175,9 +183,9 @@ int get_selected_folder_id(int sockfd, int group_id, const char *prompt) {
         if (choice == 0) {
             return current_folder_id;
         } else if (choice == 1 && current_folder_id != 0) {
-            // Go back to parent (simplified - go to root)
+            // Go back to group level
             current_folder_id = 0;
-            strcpy(current_folder_name, "Root");
+            strcpy(current_folder_name, "Group");
         } else if (choice >= 2 && choice < folder_count + 2) {
             // Enter selected folder
             int idx = choice - 2;
