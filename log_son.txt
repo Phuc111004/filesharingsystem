@@ -1,2 +1,31 @@
 [2025-12-25 16:12:22] $ LOGIN son 123 $ 110 Login success
 [2025-12-26 10:53:50] $ LOGIN son pass1 $ 110 Login success
+[2025-12-31 10:26:04] $ LOGIN son 123 $ 110 Login success
+[2025-12-31 10:26:07] $ LIST_MY_GROUPS $ [1] 1 [ID: 2]
+[2025-12-31 10:26:08] $ LIST_FILE 2 0 $ 100 List:
+[2025-12-31 10:26:11] $ DOWNLOAD $ 403 Access denied
+[2025-12-31 10:30:25] $ LIST_JOINABLE_GROUPS $ [1] Test Group (Admin: admin_user) [ID: 1]
+[2025-12-31 10:31:56] $ LOGIN son 123 $ 110 Login success
+[2025-12-31 10:32:02] $ CREATE_GROUP abc $ 200 Group created
+[2025-12-31 10:32:09] $ LIST_USER_GROUPS $ [1] abc (Admin: son)
+[2025-12-31 10:37:52] $ LIST_MY_GROUPS $ [1] abc [ID: 3]
+[2025-12-31 10:37:57] $ LIST_FILE 3 0 $ 100 List:
+[2025-12-31 10:38:36] $ LIST_FILE 3 2 $ 100 List:
+[2025-12-31 10:38:56] $ UPLOAD 3/2 z7374977356761_323967f46087fe1802ac626c4305a73a.jpg 694411 $ 150 Ready
+[2025-12-31 10:38:56] $ UPLOAD_DATA $ 200 Upload success
+[2025-12-31 10:39:45] $ LIST_MY_GROUPS $ [1] abc [ID: 3]
+[2025-12-31 10:39:47] $ LIST_FILE 3 0 $ 100 List:
+[2025-12-31 10:39:54] $ LIST_FILE 3 2 $ 100 List:
+[2025-12-31 10:40:09] $ DOWNLOAD $ 200 File sent successfully
+[2025-12-31 11:19:49] $ LIST_MY_GROUPS $ [1] abc [ID: 3]
+[2025-12-31 11:20:04] $ LOGIN son 123 $ 409 Already logged in
+[2025-12-31 11:20:17] $ LIST_MY_GROUPS $ [1] abc [ID: 3]
+[2025-12-31 11:24:21] $ LOGIN son 123 $ 409 Already logged in
+[2025-12-31 11:27:38] $ LOGIN son 123 $ 110 Login success
+[2025-12-31 11:27:42] $ LOGIN son 123 $ 409 Already logged in
+[2025-12-31 11:28:03] $ LIST_MY_GROUPS $ [1] abc [ID: 3]
+[2025-12-31 11:28:05] $ LIST_FILE 3 0 $ 100 List:
+[2025-12-31 11:28:17] $ LIST_FILE 3 2 $ 100 List:
+[2025-12-31 11:36:57] $ LIST_FILE 3 0 $ 100 List:
+[2025-12-31 11:37:13] $ LIST_FILE 3 2 $ 100 List:
+[2025-12-31 11:37:27] $ LOGIN son 123 $ 409 Already logged in

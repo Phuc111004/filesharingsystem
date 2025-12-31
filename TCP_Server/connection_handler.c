@@ -337,9 +337,16 @@ void handle_download_request(int client_sock, const char *folder, const char *fi
     }
 
     // Check if user has access to the group
-    if (group_id > 0 && !db_is_group_member(db_conn, user_id, group_id) && !db_is_group_admin(db_conn, user_id, group_id)) {
-        perform_send_and_log(client_sock, "DOWNLOAD", "403 Access denied\r\n", username);
-        return;
+    if (group_id > 0) {
+        int is_member = db_is_group_member(db_conn, user_id, group_id);
+        int is_admin = db_is_group_admin(db_conn, user_id, group_id);
+        printf("[DEBUG] Download access check: user_id=%d, group_id=%d, is_member=%d, is_admin=%d\n", 
+               user_id, group_id, is_member, is_admin);
+        
+        if (!is_member && !is_admin) {
+            perform_send_and_log(client_sock, "DOWNLOAD", "403 Access denied\r\n", username);
+            return;
+        }
     }
 
     // Build file path
