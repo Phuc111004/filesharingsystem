@@ -28,6 +28,18 @@ void handle_list_files(MYSQL *db, int current_user_id, const char *group_id_str,
     list_files_protocol(db, group_id, parent_id, response, maxlen);
 }
 
+void handle_list_all_folders(MYSQL *db, int current_user_id, const char *group_id_str, char *response, size_t maxlen) {
+    int group_id = atoi(group_id_str);
+    
+    // Check if user is in group
+    // For now we assume session validation happened before dispatch or is implicit
+    
+    char data_buf[maxlen - 32];
+    db_list_all_folders(db, group_id, data_buf, sizeof(data_buf));
+    // Protocol: 100 List:\n<data>\n203 End
+    snprintf(response, maxlen, "100 List:\n%s\n203 End", data_buf);
+}
+
 void handle_create_folder(MYSQL *db, int current_user_id, const char *group_id_str, const char *path_str, const char *arg3, char *response, size_t maxlen) {
     int group_id = atoi(group_id_str);
     const char *folder_name = path_str;

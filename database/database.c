@@ -601,6 +601,116 @@ void db_list_files(MYSQL* conn, int group_id, int parent_id, char* buffer, size_
     mysql_free_result(res);
 }
 
+// Helper: Tái tạo đường dẫn đầy đủ từ ID thư mục
+// Trả về: [Group Name]/Folder A/Folder B
+static void get_folder_full_path(MYSQL* conn, int folder_id, char* full_path, size_t size) {
+    char temp_path[1024] = "";
+    int current_id = folder_id;
+    char query[512];
+    MYSQL_RES *res;
+    MYSQL_ROW row;
+    
+    // 1. Traverse up to root
+    while (current_id > 0) {
+        snprintf(query, sizeof(query), "SELECT name, parent_id, group_id FROM root_directory WHERE id = %d", current_id);
+        if (mysql_query(conn, query)) break;
+        
+        res = mysql_store_result(conn);
+        if (!res) break;
+        
+        if ((row = mysql_fetch_row(res))) {
+            char segment[256];
+            snprintf(segment, sizeof(segment), "/%s", row[0]);
+            
+            // Prepend segment: temp_path = segment + temp_path
+            char new_temp[2048];
+            snprintf(new_temp, sizeof(new_temp), "%s%s", segment, temp_path);
+            strncpy(temp_path, new_temp, sizeof(temp_path) - 1);
+            temp_path[sizeof(temp_path) - 1] = '\0';
+            
+            // Move up
+            int parent_id = row[1] ? atoi(row[1]) : 0;
+            int group_id = atoi(row[2]);
+            
+            current_id = parent_id;
+            
+            // If checking fails or reached root, get group name
+            if (parent_id == 0) {
+                 char group_name[256];
+                 db_get_group_name(conn, group_id, group_name, sizeof(group_name));
+                 snprintf(new_temp, sizeof(new_temp), "[%s]%s", group_name, temp_path);
+                 strncpy(full_path, new_temp, size - 1);
+                 full_path[size - 1] = '\0';
+                 mysql_free_result(res);
+                 return;
+            }
+        } else {
+            // ID not found (deleted?)
+            mysql_free_result(res);
+            break;
+        }
+        mysql_free_result(res);
+    }
+    // Fallback if loop breaks unexpectedly
+    strncpy(full_path, temp_path, size);
+}
+
+void db_list_all_folders(MYSQL* conn, int group_id, char* buffer, size_t size) {
+    char query[1024];
+
+    // Query all folders in the group, excluding deleted ones
+    snprintf(query, sizeof(query),
+        "SELECT id, name, parent_id "
+        "FROM root_directory "
+        "WHERE group_id = %d AND is_folder = TRUE AND is_deleted = FALSE "
+        "ORDER BY name", group_id);
+    
+    if (mysql_query(conn, query)) {
+        snprintf(buffer, size, "Error querying folders.");
+        return;
+    }
+    
+    MYSQL_RES *res = mysql_store_result(conn);
+    if (!res) {
+        snprintf(buffer, size, "No folders found.");
+        return;
+    }
+    
+    // Store rows manually because we need to run queries inside the loop (which would break the active result set)
+    typedef struct {
+        int id;
+        char name[256];
+    } FolderInfo;
+    
+    FolderInfo folders[100]; // Limit for demo
+    int folder_count = 0;
+    
+    MYSQL_ROW row;
+    while ((row = mysql_fetch_row(res)) && folder_count < 100) {
+        folders[folder_count].id = atoi(row[0]);
+        strncpy(folders[folder_count].name, row[1], 255);
+        folder_count++;
+    }
+    mysql_free_result(res);
+
+    strcpy(buffer, "");
+    for (int i=0; i < folder_count; i++) {
+        if (i > 0) strncat(buffer, "\n", size - strlen(buffer) - 1);
+        char line[2048];
+        char full_path[1024];
+        
+        get_folder_full_path(conn, folders[i].id, full_path, sizeof(full_path));
+        
+        // Format: [FOLDER] Full/Path (ID: <id>)
+        snprintf(line, sizeof(line), "[FOLDER] %s (ID: %d)", full_path, folders[i].id);
+        strncat(buffer, line, size - strlen(buffer) - 1);
+    }
+    
+    if (folder_count == 0) strcpy(buffer, "No folders available.");
+    // Append trailing newline for multi-line protocol
+    strncat(buffer, "\n", size - strlen(buffer) - 1);
+}
+
 int db_create_folder(MYSQL* conn, int group_id, const char* name, const char* path, int uploaded_by, int parent_id) {
     char query[2048];
     if (parent_id <= 0) {
@@ -625,24 +735,114 @@ int db_rename_item(MYSQL* conn, int item_id, const char* new_name) {
 
 int db_delete_item(MYSQL* conn, int item_id) {
     char query[512];
+    
+    // 1. Tìm và xóa đệ quy các con
+    snprintf(query, sizeof(query), "SELECT id FROM root_directory WHERE parent_id = %d AND is_deleted = FALSE", item_id);
+    if (mysql_query(conn, query)) {
+        return -1;
+    }
+
+    MYSQL_RES *res = mysql_store_result(conn);
+    if (res) {
+        // Lưu ID các con vào mảng tạm để tránh xung đột cursor MySQL
+        int child_ids[256];
+        int child_count = 0;
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res)) && child_count < 256) {
+            child_ids[child_count++] = atoi(row[0]);
+        }
+        mysql_free_result(res);
+
+        for (int i = 0; i < child_count; i++) {
+            db_delete_item(conn, child_ids[i]);
+        }
+    }
+
+    // 2. Đánh dấu xóa chính mục này
     snprintf(query, sizeof(query), "UPDATE root_directory SET is_deleted=TRUE WHERE id=%d", item_id);
     return db_execute(conn, query);
 }
 
-int db_copy_item(MYSQL* conn, int item_id, int uploaded_by, int dest_parent_id) {
+// Helper: Đệ quy copy item
+static int copy_recursive(MYSQL* conn, int source_id, int dest_parent_id, int uploaded_by, int add_prefix) {
     char query[2048];
-    char parent_sql[32];
-    if (dest_parent_id <= 0) {
-        strcpy(parent_sql, "NULL");
+    MYSQL_RES *res;
+    MYSQL_ROW row;
+
+    // 1. Lấy thông tin source
+    snprintf(query, sizeof(query), "SELECT group_id, name, path, size, is_folder FROM root_directory WHERE id=%d", source_id);
+    if (mysql_query(conn, query)) return -1;
+    
+    res = mysql_store_result(conn);
+    if (!res || mysql_num_rows(res) == 0) {
+        if (res) mysql_free_result(res);
+        return -1;
+    }
+    row = mysql_fetch_row(res);
+    
+    int group_id = atoi(row[0]);
+    char old_name[256];
+    strncpy(old_name, row[1], 255);
+    old_name[255] = '\0';
+    char path[512];
+    strncpy(path, row[2], 511);
+    path[511] = '\0'; // Path có thể cần xử lý lại logic nếu hệ thống dùng path vật lý
+    long long size = atoll(row[3]);
+    int is_folder = atoi(row[4]);
+    
+    mysql_free_result(res);
+
+    // 2. Xác định tên mới
+    char new_name[512];
+    if (add_prefix) {
+        snprintf(new_name, sizeof(new_name), "Copy of %s", old_name);
     } else {
-        snprintf(parent_sql, sizeof(parent_sql), "%d", dest_parent_id);
+        strncpy(new_name, old_name, sizeof(new_name));
     }
 
-    snprintf(query, sizeof(query), 
+    // 3. Insert bản ghi mới
+    char parent_sql[32];
+    if (dest_parent_id <= 0) strcpy(parent_sql, "NULL");
+    else snprintf(parent_sql, sizeof(parent_sql), "%d", dest_parent_id);
+
+    // Escape strings
+    char esc_name[512], esc_path[1024];
+    mysql_real_escape_string(conn, esc_name, new_name, strlen(new_name));
+    mysql_real_escape_string(conn, esc_path, path, strlen(path));
+
+    snprintf(query, sizeof(query),
         "INSERT INTO root_directory (group_id, name, path, size, uploaded_by, is_folder, parent_id) "
-        "SELECT group_id, CONCAT('Copy of ', name), path, size, %d, is_folder, %s "
-        "FROM root_directory WHERE id=%d", uploaded_by, parent_sql, item_id);
-    return db_execute(conn, query);
+        "VALUES (%d, '%s', '%s', %lld, %d, %d, %s)",
+        group_id, esc_name, esc_path, size, uploaded_by, is_folder, parent_sql);
+    
+    if (db_execute(conn, query) != 0) return -1;
+
+    int new_id = (int)mysql_insert_id(conn);
+
+    // 4. Nếu là folder, copy đệ quy các con
+    if (is_folder) {
+        snprintf(query, sizeof(query), "SELECT id FROM root_directory WHERE parent_id=%d AND is_deleted=FALSE", source_id);
+        if (mysql_query(conn, query)) return 0; // Warning: Partial deletion logic check needed?
+        
+        res = mysql_store_result(conn);
+        if (res) {
+            int child_ids[100]; // Limit recursion batch
+            int count = 0;
+            while ((row = mysql_fetch_row(res)) && count < 100) {
+                child_ids[count++] = atoi(row[0]);
+            }
+            mysql_free_result(res);
+
+            for (int i = 0; i < count; i++) {
+                copy_recursive(conn, child_ids[i], new_id, uploaded_by, 0); // 0 prefix for children
+            }
+        }
+    }
+    return 0;
+}
+
+int db_copy_item(MYSQL* conn, int item_id, int uploaded_by, int dest_parent_id) {
+    return copy_recursive(conn, item_id, dest_parent_id, uploaded_by, 1);
 }
 
 int db_move_item(MYSQL* conn, int item_id, int new_group_id, int new_parent_id) {
@@ -780,4 +980,22 @@ int db_resolve_path(MYSQL* conn, const char* full_path, int return_type, int *ou
     } else {
         return last_id;
     }
+}
+
+int db_get_group_root_id(MYSQL* conn, int group_id) {
+    char query[256];
+    snprintf(query, sizeof(query), "SELECT root_dir_id FROM `groups` WHERE group_id = %d", group_id);
+    
+    if (mysql_query(conn, query)) return 0;
+    
+    MYSQL_RES *res = mysql_store_result(conn);
+    if (!res) return 0;
+    
+    MYSQL_ROW row = mysql_fetch_row(res);
+    int root_id = 0;
+    if (row && row[0]) {
+        root_id = atoi(row[0]);
+    }
+    mysql_free_result(res);
+    return root_id;
 }

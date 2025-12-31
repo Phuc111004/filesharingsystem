@@ -64,9 +64,17 @@ void dispatch_request(MYSQL *db, int current_user_id, char *buffer, char *respon
         int group_id = atoi(arg1);
         db_get_group_name(db, group_id, response, maxlen);
     }
+    else if (strcmp(cmd, "GET_GROUP_ROOT_ID") == 0) {
+        int group_id = atoi(arg1);
+        int root_id = db_get_group_root_id(db, group_id);
+        snprintf(response, maxlen, "%d", root_id);
+    }
     // --- File Management ---
     else if (strcmp(cmd, "LIST_FILE") == 0) {
         handle_list_files(db, current_user_id, arg1, arg2, response, maxlen);
+    }
+    else if (strcmp(cmd, "LIST_ALL_FOLDERS") == 0) {
+        handle_list_all_folders(db, current_user_id, arg1, response, maxlen);
     }
     else if (strcmp(cmd, "MKDIR") == 0) {
         handle_create_folder(db, current_user_id, arg1, arg2, arg3, response, maxlen);

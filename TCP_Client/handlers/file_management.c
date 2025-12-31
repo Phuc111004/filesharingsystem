@@ -38,15 +38,41 @@ static int fetch_items(int sockfd, int group_id, int parent_id, ClientItem *item
         }
         if (strstr(line, "203 End")) break;
         
-        char type_str[16], name[256], id_str[16];
+        char type_str[16], id_str[16];
         char *id_ptr = strstr(line, "[ID: ");
         if (id_ptr) {
+            // 1. Parse ID
             sscanf(id_ptr, "[ID: %15[^]]", id_str);
             items[count].id = atoi(id_str);
             
-            sscanf(line, "%15s %255s", type_str, name);
-            strncpy(items[count].name, name, 255);
+            // 2. Parse Type
+            sscanf(line, "%15s", type_str);
             items[count].is_folder = (strcmp(type_str, "FOLDER") == 0);
+
+            // 3. Parse Name (robust handling of spaces)
+            char *start_of_name = strchr(line, ' ');
+            if (start_of_name) {
+                start_of_name++; // skip space after type
+                
+                // The format is: TYPE NAME SIZE [ID: ID]
+                // We find the space before SIZE. SIZE is the word immediately preceding [ID: ]
+                char *space_before_id = id_ptr - 1;
+                while (space_before_id > start_of_name && *space_before_id == ' ') space_before_id--;
+                
+                char *start_of_size = space_before_id;
+                while (start_of_size > start_of_name && *start_of_size != ' ') start_of_size--;
+                
+                // Everything between start_of_name and start_of_size is the NAME
+                if (start_of_size > start_of_name) {
+                    size_t name_len = start_of_size - start_of_name;
+                    if (name_len > 255) name_len = 255;
+                    strncpy(items[count].name, start_of_name, name_len);
+                    items[count].name[name_len] = '\0';
+                } else {
+                    // Fallback for unexpected format
+                    sscanf(start_of_name, "%255s", items[count].name);
+                }
+            }
             count++;
         }
         line = strtok_r(NULL, "\n", &saveptr);
@@ -115,20 +141,36 @@ void handle_file_management(int sockfd) {
     recv_response(sockfd, group_name, sizeof(group_name));
     trim_newline(group_name);
 
-    int current_folder_id = 0; // 0 is root
-    char current_folder_name[256] = "Root";
+    // Fetch Group Root ID
+    int current_folder_id = 0;
+    snprintf(buffer, sizeof(buffer), "GET_GROUP_ROOT_ID %d\r\n", group_id);
+    send_all(sockfd, buffer, strlen(buffer));
+    char root_id_str[64];
+    recv_response(sockfd, root_id_str, sizeof(root_id_str));
+    trim_newline(root_id_str);
+    current_folder_id = atoi(root_id_str);
+
+    char current_folder_name[256];
+    strncpy(current_folder_name, group_name, sizeof(current_folder_name)); // Init with Group Name as Root Name
+
+    // Stack to keep track of folder history for "Back to Parent"
+    struct {
+        int id;
+        char name[256];
+    } history_stack[100];
+    int history_top = -1;
 
     while (1) {
         printf("\n--- File Management (Group: %s) ---\n", group_name);
         printf("Current Folder: %s (ID: %d)\n", current_folder_name, current_folder_id);
         printf("1. List Contents\n");
         printf("2. Enter Folder\n");
-        printf("3. Go to Root\n");
+        printf("3. Back to Parent Folder\n");
         printf("4. Create Folder (MKDIR)\n");
         printf("5. Rename File/Folder\n");
-        printf("6. Delete File/Folder\n");
+        printf("6. Move File/Folder\n");
         printf("7. Copy File/Folder\n");
-        printf("8. Move File/Folder\n");
+        printf("8. Delete File/Folder\n");
         printf("9. Back to Main Menu\n");
         printf("Select: ");
 
@@ -159,6 +201,13 @@ void handle_file_management(int sockfd) {
                 } else {
                     int selected_idx = select_item(current_items, item_count, 1, "Select folder to enter");
                     if (selected_idx != -1) {
+                        // Push current folder to history stack before entering new one
+                        if (history_top < 99) {
+                            history_top++;
+                            history_stack[history_top].id = current_folder_id;
+                            strncpy(history_stack[history_top].name, current_folder_name, 255);
+                        }
+                        
                         current_folder_id = current_items[selected_idx].id;
                         strncpy(current_folder_name, current_items[selected_idx].name, 255);
                         current_folder_name[255] = '\0';
@@ -166,9 +215,14 @@ void handle_file_management(int sockfd) {
                 }
                 break;
             case 3:
-                current_folder_id = 0;
-                strcpy(current_folder_name, "Root");
-                printf("Back to Root.\n");
+                if (history_top >= 0) {
+                    current_folder_id = history_stack[history_top].id;
+                    strncpy(current_folder_name, history_stack[history_top].name, 255);
+                    history_top--;
+                    printf("Back to %s.\n", current_folder_name);
+                } else {
+                    printf("Already at %s.\n", current_folder_name);
+                }
                 break;
             case 4:
                 printf("New folder name: ");
@@ -182,7 +236,7 @@ void handle_file_management(int sockfd) {
                 break;
             case 5:
                 item_count = fetch_items(sockfd, group_id, current_folder_id, current_items, 100);
-                int r_idx = select_item(current_items, item_count, 0, "Select item to rename");
+                int r_idx = select_item(current_items, item_count, 0, "Select file/folder to rename");
                 if (r_idx == -1) break;
                 item_id = current_items[r_idx].id;
 
@@ -195,21 +249,76 @@ void handle_file_management(int sockfd) {
                 trim_newline(resp);
                 printf("Server: %s\n", resp);
                 break;
-            case 6:
+            case 6: // Was Move (8)
                 item_count = fetch_items(sockfd, group_id, current_folder_id, current_items, 100);
-                int d_idx = select_item(current_items, item_count, 0, "Select item to delete");
-                if (d_idx == -1) break;
-                item_id = current_items[d_idx].id;
+                int m_idx = select_item(current_items, item_count, 0, "Select file/folder to move");
+                if (m_idx == -1) break;
+                item_id = current_items[m_idx].id;
 
-                snprintf(buffer, sizeof(buffer), "DELETE %d %d\r\n", group_id, item_id);
+                // Fetch all folders for destination selection
+                snprintf(buffer, sizeof(buffer), "LIST_ALL_FOLDERS %d\r\n", group_id);
+                send_all(sockfd, buffer, strlen(buffer));
+                
+                memset(resp, 0, sizeof(resp));
+                recv_response(sockfd, resp, sizeof(resp));
+                
+                if (is_error_response(resp)) {
+                    printf("%s\n", resp);
+                    break;
+                }
+
+                printf("\n--- Select destination folder ---\n");
+                printf("0. Root Directory\n");
+                
+                // Parse response manually for simple display
+                // Response format: 100 List:\n[FOLDER] Name (ID: X)\n...
+                int folder_ids[100];
+                int folder_count = 0;
+                
+                char *dup_resp = strdup(resp);
+                char *line_tok = strtok(dup_resp, "\n");
+                while (line_tok) {
+                    if (strstr(line_tok, "[FOLDER]")) {
+                        // Display line
+                        printf("%d. %s\n", folder_count + 1, line_tok);
+                        
+                        // Extract ID
+                        char *id_ptr = strstr(line_tok, "(ID: ");
+                        if (id_ptr) {
+                            folder_ids[folder_count] = atoi(id_ptr + 5);
+                            folder_count++;
+                        }
+                    }
+                    line_tok = strtok(NULL, "\n");
+                }
+                free(dup_resp);
+
+                if (folder_count == 0) {
+                    printf("(No other folders found. Move to Root?)\n");
+                }
+
+                int dest_choice;
+                printf("Selection (0-%d): ", folder_count);
+                if (scanf("%d", &dest_choice) != 1) { while(getchar() != '\n'); break; }
+                while(getchar() != '\n');
+
+                int target_parent = 0; // Default to Root
+                if (dest_choice > 0 && dest_choice <= folder_count) {
+                    target_parent = folder_ids[dest_choice - 1];
+                } else if (dest_choice != 0) {
+                    printf("Invalid selection. Cancelled.\n");
+                    break;
+                }
+                
+                snprintf(buffer, sizeof(buffer), "MOVE %d %d %d\r\n", group_id, item_id, target_parent);
                 send_all(sockfd, buffer, strlen(buffer));
                 recv_response(sockfd, resp, sizeof(resp));
                 trim_newline(resp);
                 printf("Server: %s\n", resp);
                 break;
-            case 7:
+            case 7: // Was Copy (7) - No change in logic block
                 item_count = fetch_items(sockfd, group_id, current_folder_id, current_items, 100);
-                int c_idx = select_item(current_items, item_count, 0, "Select item to copy");
+                int c_idx = select_item(current_items, item_count, 0, "Select file/folder to copy");
                 if (c_idx == -1) break;
                 item_id = current_items[c_idx].id;
 
@@ -219,18 +328,13 @@ void handle_file_management(int sockfd) {
                 trim_newline(resp);
                 printf("Server: %s\n", resp);
                 break;
-            case 8:
+            case 8: // Was Delete (6)
                 item_count = fetch_items(sockfd, group_id, current_folder_id, current_items, 100);
-                int m_idx = select_item(current_items, item_count, 0, "Select item to move");
-                if (m_idx == -1) break;
-                item_id = current_items[m_idx].id;
+                int d_idx = select_item(current_items, item_count, 0, "Select file/folder to delete");
+                if (d_idx == -1) break;
+                item_id = current_items[d_idx].id;
 
-                printf("Enter target Folder ID (manual entry or use another session to find ID): ");
-                int target_parent;
-                if (scanf("%d", &target_parent) != 1) { while(getchar() != '\n'); break; }
-                while(getchar() != '\n');
-                
-                snprintf(buffer, sizeof(buffer), "MOVE %d %d %d\r\n", group_id, item_id, target_parent);
+                snprintf(buffer, sizeof(buffer), "DELETE %d %d\r\n", group_id, item_id);
                 send_all(sockfd, buffer, strlen(buffer));
                 recv_response(sockfd, resp, sizeof(resp));
                 trim_newline(resp);

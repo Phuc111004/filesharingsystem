@@ -6,6 +6,7 @@
 #include "handlers/file_management.h"
 #include "handlers/client_utils.h"
 #include "ui.h"
+#include "helpers/group_helper.h"
 
 #include <stdio.h>
 #include <stdlib.h>
