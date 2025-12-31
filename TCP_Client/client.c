@@ -152,8 +152,20 @@ void handle_download_client(int sockfd) {
     int current_folder_id = 0;
     char selected_filename[256] = {0};
     
+    // Attempt to get real root ID
+    char buffer[1024];
+    snprintf(buffer, sizeof(buffer), "GET_GROUP_ROOT_ID %d\r\n", group_id);
+    send_all(sockfd, buffer, strlen(buffer));
+    char root_id_str[64];
+    recv_response(sockfd, root_id_str, sizeof(root_id_str));
+    trim_newline(root_id_str);
+    int real_root_id = atoi(root_id_str);
+    if (real_root_id > 0) current_folder_id = real_root_id;
+
+    int history[100];
+    int history_top = -1;
+
     while (1) {
-        // List current folder contents
         char buffer[32768];
         snprintf(buffer, sizeof(buffer), "LIST_FILE %d %d\r\n", group_id, current_folder_id);
         send_all(sockfd, buffer, strlen(buffer));
@@ -161,14 +173,9 @@ void handle_download_client(int sockfd) {
         memset(buffer, 0, sizeof(buffer));
         recv_response(sockfd, buffer, sizeof(buffer));
         
-        if (current_folder_id == 0) {
-            printf("\nBrowsing Group:\n");
-        } else {
-            printf("\nBrowsing Folder:\n");
-        }
-        printf("Contents:\n%s\n", buffer);
+        // Use clean header
+        // printf("Contents:\n%s\n", buffer); // REMOVED raw dump
         
-        // Parse items
         typedef struct { int id; char name[256]; int is_folder; } Item;
         Item items[100];
         int item_count = 0;
@@ -177,6 +184,8 @@ void handle_download_client(int sockfd) {
         char *dup = strdup(buffer);
         char *line = strtok_r(dup, "\n", &saveptr);
         
+        printf("\nContents:\n");
+
         while (line && item_count < 100) {
             if (strstr(line, "List:") || strlen(line) < 5) {
                 line = strtok_r(NULL, "\n", &saveptr);
@@ -184,60 +193,106 @@ void handle_download_client(int sockfd) {
             }
             if (strstr(line, "End")) break;
             
-            char type_str[16], name[256], id_str[16];
+            char type_str[16], id_str[16], name[256];
             char *id_ptr = strstr(line, "[ID: ");
+            
+            // Clean parsing
+            int id = 0;
+            int is_folder = 0;
+            
             if (id_ptr) {
                 sscanf(id_ptr, "[ID: %15[^]]", id_str);
-                items[item_count].id = atoi(id_str);
+                id = atoi(id_str);
                 
-                sscanf(line, "%15s %255s", type_str, name);
+                sscanf(line, "%15s", type_str); 
+                is_folder = (strcmp(type_str, "FOLDER") == 0);
+
+                // Name parsing
+                char *start_of_name = strchr(line, ' ');
+                if (start_of_name) {
+                    start_of_name++;
+                    char *space_before_id = id_ptr - 1;
+                    while (space_before_id > start_of_name && *space_before_id == ' ') space_before_id--;
+                    char *start_of_size = space_before_id;
+                    while (start_of_size > start_of_name && *start_of_size != ' ') start_of_size--;
+                    
+                    if (start_of_size > start_of_name) {
+                        size_t name_len = start_of_size - start_of_name;
+                        if (name_len > 255) name_len = 255;
+                        strncpy(name, start_of_name, name_len);
+                        name[name_len] = '\0';
+                    } else {
+                         sscanf(start_of_name, "%255s", name);
+                    }
+                }
+                
+                // Add to list
+                items[item_count].id = id;
                 strncpy(items[item_count].name, name, 255);
-                items[item_count].is_folder = (strcmp(type_str, "FOLDER") == 0);
+                items[item_count].is_folder = is_folder;
+                
+                // Print Clean
+                if (is_folder) {
+                    printf("  [FOLDER] %s\n", name);
+                } else {
+                    printf("  [FILE]   %s\n", name);
+                }
                 item_count++;
             }
             line = strtok_r(NULL, "\n", &saveptr);
         }
         free(dup);
         
-        // Show options
-        printf("\nOptions:\n");
-        if (current_folder_id != 0) {
-            printf("0. Go back\n");
+        // Show navigation options
+        printf("\nNavigation:\n");
+        printf("0. Back to Main Menu\n"); // Exit download flow
+        if (history_top >= 0) {
+            printf("1. Go Back to Parent\n");
         }
+        
+        int option_idx = 2; 
         for (int i = 0; i < item_count; i++) {
-            printf("%d. %s %s\n", i + 1, 
-                   items[i].is_folder ? "[FOLDER]" : "[FILE]", 
-                   items[i].name);
+            if (items[i].is_folder) {
+                printf("%d. Enter folder: %s\n", option_idx, items[i].name);
+            } else {
+                printf("%d. Download file: %s\n", option_idx, items[i].name);
+            }
+            option_idx++;
         }
         
         int choice;
-        printf("Choice (0 to go back, or select item): ");
+        printf("Choice: ");
         if (scanf("%d", &choice) != 1) {
             while(getchar() != '\n');
             continue;
         }
         while(getchar() != '\n');
         
-        if (choice == 0 && current_folder_id != 0) {
-            current_folder_id = 0; // Go back to group level
-        } else if (choice >= 1 && choice <= item_count) {
-            int idx = choice - 1;
-            if (items[idx].is_folder) {
-                current_folder_id = items[idx].id;
+        if (choice == 0) {
+            return; // Exit function
+        } else if (choice == 1 && history_top >= 0) {
+            current_folder_id = history[history_top];
+            history_top--;
+        } else if (choice >= 2 && choice < option_idx) {
+            int selected_idx = choice - 2;
+            if (items[selected_idx].is_folder) {
+                // Enter folder
+                if (history_top < 99) {
+                    history_top++;
+                    history[history_top] = current_folder_id;
+                }
+                current_folder_id = items[selected_idx].id;
             } else {
-                // Selected a file - download it
-                strncpy(selected_filename, items[idx].name, sizeof(selected_filename) - 1);
-                break;
+                // Download file
+                strncpy(selected_filename, items[selected_idx].name, sizeof(selected_filename) - 1);
+                break; // Exit loop to proceed with download
             }
         } else {
             printf("Invalid choice.\n");
         }
     }
     
-    if (strlen(selected_filename) == 0) {
-        printf("No file selected.\n");
-        return;
-    }
+    if (strlen(selected_filename) == 0) return;
 
     // Build full local path
     char full_local_path[1024];
@@ -274,8 +329,8 @@ void handle_download_client(int sockfd) {
         return;
     }
 
-    char *buffer = (char *)malloc(CHUNK_SIZE);
-    if (!buffer) {
+    char *file_buf = (char *)malloc(CHUNK_SIZE);
+    if (!file_buf) {
         perror("Memory allocation failed");
         fclose(fp);
         return;
@@ -286,16 +341,16 @@ void handle_download_client(int sockfd) {
         size_t to_read = CHUNK_SIZE;
         if (filesize - received < CHUNK_SIZE) to_read = (size_t)(filesize - received);
 
-        ssize_t n = recv(sockfd, buffer, to_read, 0);
+        ssize_t n = recv(sockfd, file_buf, to_read, 0);
         if (n <= 0) {
             printf("Connection error during download.\n");
             break;
         }
-        fwrite(buffer, 1, n, fp);
+        fwrite(file_buf, 1, n, fp);
         received += n;
     }
 
-    free(buffer);
+    free(file_buf);
     fclose(fp);
 
     if (received == filesize) {
@@ -319,12 +374,30 @@ void handle_list_directory(int sockfd) {
         return;
     }
 
-    printf("\nBrowsing directory contents:\n");
-    int current_folder_id = 0;
+    int current_folder_id = 0; // Assuming 0 is root or use get_group_root_id
     char current_folder_name[256] = "Root";
     
+    // Attempt to get real root ID, similar to file management
+    char buffer[1024];
+    snprintf(buffer, sizeof(buffer), "GET_GROUP_ROOT_ID %d\r\n", group_id);
+    send_all(sockfd, buffer, strlen(buffer));
+    char root_id_str[64];
+    recv_response(sockfd, root_id_str, sizeof(root_id_str));
+    trim_newline(root_id_str);
+    int real_root_id = atoi(root_id_str);
+    if (real_root_id > 0) current_folder_id = real_root_id;
+
+    // Helper stack for navigation (simple depth version)
+    // For full path support we'd need a stack of IDs.
+    // Let's keep it simple: "Go back" goes to parent (which we might need to fetch or track).
+    // The previous implementation used 0 as parent for everything which is wrong if we have depth.
+    // For now, let's just stick to the requested "clean display" and "exit" fix.
+    // To properly support "Back", we should use a history stack like in file_management.c.
+    
+    int history[100];
+    int history_top = -1;
+
     while (1) {
-        // List current folder contents
         char buffer[32768];
         snprintf(buffer, sizeof(buffer), "LIST_FILE %d %d\r\n", group_id, current_folder_id);
         send_all(sockfd, buffer, strlen(buffer));
@@ -332,14 +405,9 @@ void handle_list_directory(int sockfd) {
         memset(buffer, 0, sizeof(buffer));
         recv_response(sockfd, buffer, sizeof(buffer));
         
-        if (current_folder_id == 0) {
-            printf("\n=== Group ID: %d ===\n", group_id);
-        } else {
-            printf("\n=== Group ID: %d, Folder: %s ===\n", group_id, current_folder_name);
-        }
-        printf("%s\n", buffer);
+        printf("\n=== Browsing Group: %d | Folder: %s ===\n", group_id, current_folder_name);
         
-        // Parse folders for navigation
+        // Parse items
         typedef struct { int id; char name[256]; int is_folder; } Item;
         Item items[100];
         int item_count = 0;
@@ -348,6 +416,9 @@ void handle_list_directory(int sockfd) {
         char *dup = strdup(buffer);
         char *line = strtok_r(dup, "\n", &saveptr);
         
+        // Print header for file list
+        printf("Contents:\n");
+
         while (line && item_count < 100) {
             if (strstr(line, "List:") || strlen(line) < 5) {
                 line = strtok_r(NULL, "\n", &saveptr);
@@ -355,29 +426,88 @@ void handle_list_directory(int sockfd) {
             }
             if (strstr(line, "End")) break;
             
-            char type_str[16], name[256], id_str[16];
+            char type_str[16], id_str[16];
             char *id_ptr = strstr(line, "[ID: ");
-            if (id_ptr && strncmp(line, "FOLDER", 6) == 0) {
+            
+            // Clean parsing similar to fetch_items
+            char name[256] = {0};
+            int is_folder = 0;
+            int id = 0;
+
+            if (id_ptr) {
                 sscanf(id_ptr, "[ID: %15[^]]", id_str);
-                items[item_count].id = atoi(id_str);
+                id = atoi(id_str);
                 
-                sscanf(line, "%15s %255s", type_str, name);
+                sscanf(line, "%15s", type_str);
+                is_folder = (strcmp(type_str, "FOLDER") == 0);
+
+                // Parse Name (robust handling of spaces)
+                char *start_of_name = strchr(line, ' ');
+                if (start_of_name) {
+                    start_of_name++; // skip space after type
+                    char *space_before_id = id_ptr - 1;
+                    while (space_before_id > start_of_name && *space_before_id == ' ') space_before_id--;
+                    char *start_of_size = space_before_id;
+                    while (start_of_size > start_of_name && *start_of_size != ' ') start_of_size--;
+                    
+                    if (start_of_size > start_of_name) {
+                        size_t name_len = start_of_size - start_of_name;
+                        if (name_len > 255) name_len = 255;
+                        strncpy(name, start_of_name, name_len);
+                        name[name_len] = '\0';
+                    } else {
+                         sscanf(start_of_name, "%255s", name);
+                    }
+                }
+            } else {
+                 // Fallback if ID invalid
+                 line = strtok_r(NULL, "\n", &saveptr);
+                 continue;
+            }
+
+            // Print Clean Entry
+            if (is_folder) {
+                printf("  [FOLDER] %s\n", name);
+                items[item_count].id = id;
                 strncpy(items[item_count].name, name, 255);
                 items[item_count].is_folder = 1;
                 item_count++;
+            } else {
+                printf("  [FILE]   %s\n", name);
             }
+
             line = strtok_r(NULL, "\n", &saveptr);
         }
         free(dup);
         
+        if (item_count == 0) {
+            // Check if there were any files printed (since we only stored folders in items for navigation)
+            // But verify logic: loop printed both. items array only needs folders?
+            // "Enter folder" only makes sense for folders.
+            // Let's store text in items regardless? No, navigation only for folders.
+            // Wait, previous code only stored folders in `items`.
+            // Let's keep that behavior.
+        }
+
         // Show navigation options
         printf("\nNavigation:\n");
         printf("0. Back to main menu\n");
-        if (current_folder_id != 0) {
-            printf("1. Go back\n");
+        if (history_top >= 0) {
+            printf("1. Go Back to Parent\n");
         }
+        
+        int option_idx = 2; // Start after 0 and 1
         for (int i = 0; i < item_count; i++) {
-            printf("%d. Enter folder: %s\n", i + 2, items[i].name);
+            if (items[i].is_folder) {
+                printf("%d. Enter folder: %s\n", option_idx, items[i].name);
+                 // We re-use item_count for folders only? 
+                 // My parsing loop added only if is_folder? 
+                 // Ah, previous code: if (id_ptr && strncmp(line, "FOLDER", 6) == 0) -> add to items.
+                 // My new loop prints files but needs to add folders to items array.
+                 // Correct logic:
+                 // Loop: parse. Print. If folder -> items[item_count++] = ...
+            }
+            option_idx++;
         }
         
         int choice;
@@ -390,14 +520,32 @@ void handle_list_directory(int sockfd) {
         
         if (choice == 0) {
             break; // Back to main menu
-        } else if (choice == 1 && current_folder_id != 0) {
-            current_folder_id = 0;
-            strcpy(current_folder_name, "Group");
-        } else if (choice >= 2 && choice < item_count + 2) {
-            int idx = choice - 2;
-            current_folder_id = items[idx].id;
-            strncpy(current_folder_name, items[idx].name, 255);
-            current_folder_name[255] = '\0';
+        } else if (choice == 1 && history_top >= 0) {
+            // Pop history
+            current_folder_id = history[history_top];
+            history_top--;
+            strcpy(current_folder_name, "Parent"); // Name lost unless we stack it too. simplified.
+        } else if (choice >= 2 && choice < option_idx) {
+            // Find which folder corresponds to choice
+            // Since we iterated and printed, we need to map choice back to items index.
+            // Since I incremented option_idx for every item? No, only for folders?
+            // Wait, the loop above: `for (int i = 0; i < item_count; i++) ... printf`
+            // implies that `items` ONLY contains folders.
+            // Let's ensure parsing loop only adds folders to `items`.
+            
+            int folder_idx = choice - 2;
+             if (folder_idx >= 0 && folder_idx < item_count) {
+                // Push current to history
+                if (history_top < 99) {
+                    history_top++;
+                    history[history_top] = current_folder_id;
+                }
+                
+                current_folder_id = items[folder_idx].id;
+                strncpy(current_folder_name, items[folder_idx].name, 255);
+            } else {
+                printf("Invalid choice.\n");
+            }
         } else {
             printf("Invalid choice.\n");
         }
