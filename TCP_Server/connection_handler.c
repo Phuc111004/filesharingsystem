@@ -569,9 +569,10 @@ void* client_thread(void* arg) {
 /**
  * @function start_server
  * Sets up the TCP server socket and accepts incoming connections.
- * * @param port The port number to listen on
+ * @param bind_ip The IP address to bind (e.g., "0.0.0.0" for all interfaces)
+ * @param port The port number to listen on
  */
-void start_server(int port) {
+void start_server(const char *bind_ip, int port) {
     int server_fd, new_socket;
     struct sockaddr_in address; // Biến này tên là address
     int opt = 1;
@@ -589,8 +590,12 @@ void start_server(int port) {
     }
 
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(listen_port);
+
+    // Bind to provided IP (default handled by caller)
+    if (!bind_ip || inet_pton(AF_INET, bind_ip, &address.sin_addr) != 1) {
+        address.sin_addr.s_addr = INADDR_ANY; // fallback
+    }
 
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
         perror("bind failed");
@@ -602,7 +607,7 @@ void start_server(int port) {
         exit(EXIT_FAILURE);
     }
 
-    printf("[Server] Listening on port %d...\n", listen_port);
+    printf("[Server] Listening on %s:%d...\n", inet_ntoa(address.sin_addr), listen_port);
 
     while (1) {
         if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
