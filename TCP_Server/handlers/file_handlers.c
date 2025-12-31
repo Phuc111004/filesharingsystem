@@ -15,7 +15,7 @@ static int is_leader(MYSQL *db, int user_id, int group_id) {
 static void list_files_protocol(MYSQL *db, int group_id, int parent_id, char *response, size_t maxlen) {
     char data_buf[maxlen - 32];
     db_list_files(db, group_id, parent_id, data_buf, sizeof(data_buf));
-    snprintf(response, maxlen, "100 List:\n%s\n203 End", data_buf);
+    snprintf(response, maxlen, "List:\n%s\nEnd", data_buf);
 }
 
 void handle_list_files(MYSQL *db, int current_user_id, const char *group_id_str, const char *path_str, char *response, size_t maxlen) {

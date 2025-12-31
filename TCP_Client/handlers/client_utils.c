@@ -137,11 +137,11 @@ int get_selected_folder_id(int sockfd, int group_id, const char *prompt) {
         char *line = strtok_r(dup, "\n", &saveptr);
         
         while (line && folder_count < 100) {
-            if (strstr(line, "100 List:") || strlen(line) < 5) {
+            if (strstr(line, "List:") || strlen(line) < 5) {
                 line = strtok_r(NULL, "\n", &saveptr);
                 continue;
             }
-            if (strstr(line, "203 End")) break;
+            if (strstr(line, "End")) break;
             
             char type_str[16], name[256], id_str[16];
             char *id_ptr = strstr(line, "[ID: ");
