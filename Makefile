@@ -1,6 +1,6 @@
 CC=gcc
 CFLAGS=-I/usr/include/mysql -I./ -Wall -g
-LIBS=-lmysqlclient -lpthread
+LIBS=-lmysqlclient -lpthread -lcrypto
 
 SERVER_SRC=TCP_Server/server.c TCP_Server/connection_handler.c database/database.c database/queries.c common/utils.c common/file_utils.c $(wildcard TCP_Server/handlers/*.c)
 CLIENT_SRC=TCP_Client/client.c TCP_Client/ui.c common/utils.c common/file_utils.c $(wildcard TCP_Client/handlers/*.c) $(wildcard TCP_Client/helpers/*.c)

@@ -32,11 +32,11 @@ static int fetch_items(int sockfd, int group_id, int parent_id, ClientItem *item
     char *line = strtok_r(dup, "\n", &saveptr);
     
     while (line && count < max_items) {
-        if (strstr(line, "100 List:") || strlen(line) < 5) {
+        if (strstr(line, "List:") || strlen(line) < 5) {
             line = strtok_r(NULL, "\n", &saveptr);
             continue;
         }
-        if (strstr(line, "203 End")) break;
+        if (strstr(line, "End")) break;
         
         char type_str[16], id_str[16];
         char *id_ptr = strstr(line, "[ID: ");

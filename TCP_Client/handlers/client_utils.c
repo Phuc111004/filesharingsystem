@@ -66,3 +66,135 @@ int is_error_response(const char *response) {
     }
     return 0;
 }
+
+// Group selection helper
+int get_selected_group_id(int sockfd) {
+    char buffer[32768];
+    snprintf(buffer, sizeof(buffer), "LIST_MY_GROUPS\r\n");
+    send_all(sockfd, buffer, strlen(buffer));
+    
+    memset(buffer, 0, sizeof(buffer));
+    int n = recv_response(sockfd, buffer, sizeof(buffer));
+    if (n <= 0) return -1;
+    buffer[n] = '\0';
+
+    if (is_error_response(buffer)) {
+        printf("%s\n", buffer);
+        return -1;
+    } else {
+        printf("\nYour Groups:\n%s\n", buffer);
+    }
+
+    int ids[100];
+    int count = parse_ids_from_response(buffer, ids, 100, "[ID: ");
+    
+    if (count == 0) {
+        printf("No groups found.\n");
+        return -1;
+    }
+
+    int choice;
+    printf("Select group number (1-%d): ", count);
+    if (scanf("%d", &choice) != 1 || choice < 1 || choice > count) {
+        while(getchar() != '\n');
+        printf("Invalid selection.\n");
+        return -1;
+    }
+    while(getchar() != '\n');
+    return ids[choice - 1];
+}
+
+// Folder selection helper
+int get_selected_folder_id(int sockfd, int group_id, const char *prompt) {
+    printf("\n%s\n", prompt ? prompt : "Select destination folder:");
+    
+    int current_folder_id = 0; // Start at group level
+    char current_folder_name[256] = "Group";
+    
+    while (1) {
+        // List current folder contents
+        char buffer[32768];
+        snprintf(buffer, sizeof(buffer), "LIST_FILE %d %d\r\n", group_id, current_folder_id);
+        send_all(sockfd, buffer, strlen(buffer));
+        
+        memset(buffer, 0, sizeof(buffer));
+        int n = recv_response(sockfd, buffer, sizeof(buffer));
+        if (n <= 0) return -1;
+        
+        if (current_folder_id == 0) {
+            printf("\nCurrent: Group\n");
+        } else {
+            printf("\nCurrent Folder: %s\n", current_folder_name);
+        }
+        printf("Contents:\n%s\n", buffer);
+        
+        // Parse folders only
+        int folder_ids[100];
+        char folder_names[100][256];
+        int folder_count = 0;
+        
+        char *saveptr;
+        char *dup = strdup(buffer);
+        char *line = strtok_r(dup, "\n", &saveptr);
+        
+        while (line && folder_count < 100) {
+            if (strstr(line, "100 List:") || strlen(line) < 5) {
+                line = strtok_r(NULL, "\n", &saveptr);
+                continue;
+            }
+            if (strstr(line, "203 End")) break;
+            
+            char type_str[16], name[256], id_str[16];
+            char *id_ptr = strstr(line, "[ID: ");
+            if (id_ptr && strncmp(line, "FOLDER", 6) == 0) {
+                sscanf(id_ptr, "[ID: %15[^]]", id_str);
+                folder_ids[folder_count] = atoi(id_str);
+                
+                sscanf(line, "%15s %255s", type_str, name);
+                strncpy(folder_names[folder_count], name, 255);
+                folder_names[folder_count][255] = '\0';
+                folder_count++;
+            }
+            line = strtok_r(NULL, "\n", &saveptr);
+        }
+        free(dup);
+        
+        // Show options
+        printf("\nOptions:\n");
+        if (current_folder_id == 0) {
+            printf("0. Upload here (Group level)\n");
+        } else {
+            printf("0. Upload here (%s)\n", current_folder_name);
+        }
+        if (current_folder_id != 0) {
+            printf("1. Go back\n");
+        }
+        for (int i = 0; i < folder_count; i++) {
+            printf("%d. Enter folder: %s\n", i + 2, folder_names[i]);
+        }
+        
+        int choice;
+        printf("Choice: ");
+        if (scanf("%d", &choice) != 1) {
+            while(getchar() != '\n');
+            continue;
+        }
+        while(getchar() != '\n');
+        
+        if (choice == 0) {
+            return current_folder_id;
+        } else if (choice == 1 && current_folder_id != 0) {
+            // Go back to group level
+            current_folder_id = 0;
+            strcpy(current_folder_name, "Group");
+        } else if (choice >= 2 && choice < folder_count + 2) {
+            // Enter selected folder
+            int idx = choice - 2;
+            current_folder_id = folder_ids[idx];
+            strncpy(current_folder_name, folder_names[idx], 255);
+            current_folder_name[255] = '\0';
+        } else {
+            printf("Invalid choice.\n");
+        }
+    }
+}
