@@ -22,6 +22,7 @@ void db_list_pending_requests(MYSQL* conn, int user_id, char* buffer, size_t siz
 // Helpers for new features
 int db_is_group_admin(MYSQL* conn, int user_id, int group_id);
 int db_is_group_member(MYSQL* conn, int user_id, int group_id);
+int db_get_group_id_for_user_by_name(MYSQL* conn, int user_id, const char* group_name);
 int db_get_user_id_by_name(MYSQL* conn, const char* username);
 int db_check_group_exists(MYSQL* conn, int group_id);
 void db_list_all_groups(MYSQL* conn, char* buffer, size_t size);
@@ -31,6 +32,7 @@ void db_get_group_name(MYSQL* conn, int group_id, char* buffer, size_t size);
 void db_list_admin_groups(MYSQL* conn, int user_id, char* buffer, size_t size);
 void db_list_non_members(MYSQL* conn, int group_id, char* buffer, size_t size);
 void db_list_group_members(MYSQL* conn, int group_id, char* buffer, size_t size);
+void db_list_group_members_with_roles(MYSQL* conn, int group_id, char* buffer, size_t size);
 void db_list_join_requests_for_admin(MYSQL* conn, int user_id, char* buffer, size_t size);
 void db_list_invitations_for_user(MYSQL* conn, int user_id, char* buffer, size_t size);
 void db_list_joinable_groups(MYSQL* conn, int user_id, char* buffer, size_t size);

@@ -1,4 +1,5 @@
 #include "handlers.h"
+#include "client_utils.h"
 #include "../../common/file_utils.h"
 #include "../../common/utils.h"
 #include <stdio.h>
@@ -16,7 +17,8 @@ void handle_login(int sockfd) {
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    recv(sockfd, buffer, sizeof(buffer)-1, 0);
+    int n = recv_response(sockfd, buffer, sizeof(buffer));
+    if (n > 0) buffer[n] = '\0';
     printf("Server: %s", buffer);
 }
 
@@ -30,7 +32,8 @@ void handle_register(int sockfd) {
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    recv(sockfd, buffer, sizeof(buffer)-1, 0);
+    int n = recv_response(sockfd, buffer, sizeof(buffer));
+    if (n > 0) buffer[n] = '\0';
     printf("Server: %s", buffer);
 }
 
@@ -42,6 +45,7 @@ void handle_logout(int sockfd) {
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));
-    recv(sockfd, buffer, sizeof(buffer)-1, 0);
+    int n = recv_response(sockfd, buffer, sizeof(buffer));
+    if (n > 0) buffer[n] = '\0';
     printf("Server: %s", buffer);
 }

@@ -18,21 +18,31 @@ void handle_join_req(MYSQL *db, int current_user_id, const char *arg1, char *res
     }
 }
 
-void handle_leave_group(MYSQL *db, int current_user_id, const char *arg1, char *response, size_t maxlen) {
-    // LEAVE_GROUP <group_id>
-    int group_id = atoi(arg1);
-    if (!db_check_group_exists(db, group_id)) {
-        snprintf(response, maxlen, "404 Group not found");
-    } else {
-        // Check if admin?
-        // "Trưởng nhóm không thể rời nhóm" -> 403 Forbidden
-        if (db_is_group_admin(db, current_user_id, group_id)) {
-            snprintf(response, maxlen, "403 Forbidden (Leader cannot leave)");
-        } else {
-            db_remove_group_member(db, current_user_id, group_id);
-            snprintf(response, maxlen, "200 Left group");
-        }
+void handle_leave_group(MYSQL *db, int current_user_id, const char *group_name, char *response, size_t maxlen) {
+    // LEAVE_GROUP <group_name>
+    if (!group_name || strlen(group_name) == 0) {
+        snprintf(response, maxlen, "400 Bad request");
+        return;
     }
+
+    int group_id = db_get_group_id_for_user_by_name(db, current_user_id, group_name);
+    if (group_id == -1) {
+        snprintf(response, maxlen, "500 Internal Server Error");
+        return;
+    }
+    if (group_id == 0) {
+        snprintf(response, maxlen, "404 Group not found");
+        return;
+    }
+
+    // Leader cannot leave the group
+    if (db_is_group_admin(db, current_user_id, group_id)) {
+        snprintf(response, maxlen, "403 Forbidden (Admin cannot leave)");
+        return;
+    }
+
+    db_remove_group_member(db, current_user_id, group_id);
+    snprintf(response, maxlen, "200 Left group");
 }
 
 void handle_list_pending_req(MYSQL *db, int current_user_id, const char *arg1, char *response, size_t maxlen) {
@@ -140,4 +150,25 @@ void handle_invite_user(MYSQL *db, int current_user_id, const char *arg1, const 
             else snprintf(response, maxlen, "500 Error");
         }
     }
+}
+
+void handle_list_group_members(MYSQL *db, int current_user_id, const char *group_name, char *response, size_t maxlen) {
+    if (!group_name || strlen(group_name) == 0) {
+        snprintf(response, maxlen, "400 Bad request");
+        return;
+    }
+
+    int group_id = db_get_group_id_for_user_by_name(db, current_user_id, group_name);
+    if (group_id == -1) {
+        snprintf(response, maxlen, "500 Internal Server Error");
+        return;
+    }
+    if (group_id == 0) {
+        snprintf(response, maxlen, "404 Group not found");
+        return;
+    }
+
+    char list_buf[3500];
+    db_list_group_members_with_roles(db, group_id, list_buf, sizeof(list_buf));
+    snprintf(response, maxlen, "100 Member List:\n%s", list_buf);
 }
