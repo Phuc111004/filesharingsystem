@@ -115,16 +115,21 @@ static int select_item(ClientItem *items, int count, int folder_only, const char
 }
 
 static void list_files_in_group(int sockfd, int group_id, int parent_id) {
-    char buffer[32768];
-    snprintf(buffer, sizeof(buffer), "LIST_FILE %d %d\r\n", group_id, parent_id);
-    send_all(sockfd, buffer, strlen(buffer));
+    ClientItem items[100];
+    int count = fetch_items(sockfd, group_id, parent_id, items, 100);
     
-    memset(buffer, 0, sizeof(buffer));
-    recv_response(sockfd, buffer, sizeof(buffer));
-    if (is_error_response(buffer)) {
-        printf("%s\n", buffer);
+    printf("\nItems (Current Folder ID: %d):\n", parent_id);
+    if (count == 0) {
+        printf("No files or folders found.\n");
     } else {
-        printf("\nItems (Current Folder ID: %d):\n%s\n", parent_id, buffer);
+        for (int i = 0; i < count; i++) {
+            // User requested format: FOLDER test1 (hiding size and ID)
+            if (items[i].is_folder) {
+                printf("FOLDER %s\n", items[i].name);
+            } else {
+                printf("FILE %s\n", items[i].name);
+            }
+        }
     }
 }
 
