@@ -161,7 +161,11 @@ void handle_download_client(int sockfd) {
         memset(buffer, 0, sizeof(buffer));
         recv_response(sockfd, buffer, sizeof(buffer));
         
-        printf("\nCurrent Folder ID: %d\n", current_folder_id);
+        if (current_folder_id == 0) {
+            printf("\nBrowsing Group:\n");
+        } else {
+            printf("\nBrowsing Folder:\n");
+        }
         printf("Contents:\n%s\n", buffer);
         
         // Parse items
@@ -198,7 +202,7 @@ void handle_download_client(int sockfd) {
         // Show options
         printf("\nOptions:\n");
         if (current_folder_id != 0) {
-            printf("0. Go back to parent\n");
+            printf("0. Go back\n");
         }
         for (int i = 0; i < item_count; i++) {
             printf("%d. %s %s\n", i + 1, 
@@ -215,7 +219,7 @@ void handle_download_client(int sockfd) {
         while(getchar() != '\n');
         
         if (choice == 0 && current_folder_id != 0) {
-            current_folder_id = 0; // Simplified: go to root
+            current_folder_id = 0; // Go back to group level
         } else if (choice >= 1 && choice <= item_count) {
             int idx = choice - 1;
             if (items[idx].is_folder) {
@@ -323,7 +327,11 @@ void handle_list_directory(int sockfd) {
         memset(buffer, 0, sizeof(buffer));
         recv_response(sockfd, buffer, sizeof(buffer));
         
-        printf("\n=== Group ID: %d, Folder: %s (ID: %d) ===\n", group_id, current_folder_name, current_folder_id);
+        if (current_folder_id == 0) {
+            printf("\n=== Group ID: %d ===\n", group_id);
+        } else {
+            printf("\n=== Group ID: %d, Folder: %s ===\n", group_id, current_folder_name);
+        }
         printf("%s\n", buffer);
         
         // Parse folders for navigation
@@ -361,7 +369,7 @@ void handle_list_directory(int sockfd) {
         printf("\nNavigation:\n");
         printf("0. Back to main menu\n");
         if (current_folder_id != 0) {
-            printf("1. Go back to root\n");
+            printf("1. Go back\n");
         }
         for (int i = 0; i < item_count; i++) {
             printf("%d. Enter folder: %s\n", i + 2, items[i].name);
@@ -379,7 +387,7 @@ void handle_list_directory(int sockfd) {
             break; // Back to main menu
         } else if (choice == 1 && current_folder_id != 0) {
             current_folder_id = 0;
-            strcpy(current_folder_name, "Root");
+            strcpy(current_folder_name, "Group");
         } else if (choice >= 2 && choice < item_count + 2) {
             int idx = choice - 2;
             current_folder_id = items[idx].id;
