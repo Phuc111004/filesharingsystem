@@ -230,6 +230,14 @@ void handle_upload_request(int client_sock, const char *folder, const char *file
     // Determine storage path
     char storage_path[1024];
     if (group_id > 0) {
+        // PERMISSION CHECK: Member or Admin required
+        int is_member = db_is_group_member(db_conn, user_id, group_id);
+        int is_admin = db_is_group_admin(db_conn, user_id, group_id);
+        if (!is_member && !is_admin) {
+             perform_send_and_log(client_sock, log_info, "403 Access denied\r\n", username);
+             return;
+        }
+
         db_get_group_name(db_conn, group_id, group_name, sizeof(group_name));
         snprintf(storage_path, sizeof(storage_path), "storage/%s", group_name);
     } else {
