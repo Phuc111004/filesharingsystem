@@ -14,6 +14,7 @@ void handle_approve_request(int sockfd);
 void handle_accept_invitation(int sockfd);
 void handle_kick_member(int sockfd);
 void handle_leave_group(int sockfd);
+void handle_list_group_members(int sockfd);
 void handle_logout(int sockfd);
 
 #endif // HANDLERS_H

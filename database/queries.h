@@ -29,7 +29,10 @@ int db_create_group(MYSQL* conn, const char* group_name, int owner_user_id, cons
 int db_is_group_admin(MYSQL* conn, int user_id, int group_id);
 // Returns 1 nếu user là member (vai trò 'member'), 0 nếu không, -1 nếu lỗi
 int db_is_group_member(MYSQL* conn, int user_id, int group_id);
+int db_get_group_id_for_user_by_name(MYSQL* conn, int user_id, const char* group_name);
 
+// List members with their roles (admin/member)
+void db_list_group_members_with_roles(MYSQL* conn, int group_id, char* buffer, size_t size);
 
 // Add more prototypes for groups, requests, directories, logs...
 
