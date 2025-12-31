@@ -502,12 +502,12 @@ void run_client() {
                 handle_leave_group(sockfd);
                 break;
 
-            case 15: // Logout
-                handle_logout(sockfd);
+            case 15: // File Management
+                handle_file_management(sockfd);
                 break;
 
-            case 16: // File Management
-                handle_file_management(sockfd);
+            case 16: // Logout
+                handle_logout(sockfd);
                 break;
 
             case 17: // Exit
