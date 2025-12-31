@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <openssl/sha.h>
 
 
 char* str_trim(char* s) {
@@ -15,10 +16,22 @@ return s;
 
 
 int utils_hash_password(const char* password, char* out_hash, size_t out_size) {
-	// TODO: replace with a proper password hashing (bcrypt/argon2). Placeholder below:
-	if (!password || !out_hash) return -1;
-	snprintf(out_hash, out_size, "HASHED_%s", password);
-	return 0;
+    if (!password || !out_hash) return -1;
+
+    unsigned char digest[SHA256_DIGEST_LENGTH];
+    if (!SHA256((const unsigned char*)password, strlen(password), digest)) {
+        return -1;
+    }
+
+    // Need 64 hex chars + null
+    const size_t needed = SHA256_DIGEST_LENGTH * 2 + 1;
+    if (out_size < needed) return -1;
+
+    for (size_t i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
+        sprintf(out_hash + (i * 2), "%02x", digest[i]);
+    }
+    out_hash[SHA256_DIGEST_LENGTH * 2] = '\0';
+    return 0;
 }
 
 void mkdir_p(const char *path) {
