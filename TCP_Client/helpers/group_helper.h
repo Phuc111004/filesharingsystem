@@ -10,4 +10,7 @@
  */
 int get_selected_admin_group(int sockfd);
 
+int get_selected_group_id(int sockfd);
+int get_selected_folder_id(int sockfd, int group_id, const char* prompt);
+
 #endif // GROUP_HELPER_H

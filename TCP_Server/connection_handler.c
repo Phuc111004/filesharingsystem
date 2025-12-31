@@ -342,12 +342,17 @@ void handle_download_request(int client_sock, const char *folder, const char *fi
         }
     }
 
-    // Build file path
+    // Build file path from database
     char file_path[1024];
-    snprintf(file_path, sizeof(file_path), "%s/%s/%s", STORAGE_ROOT, group_name, filename);
+    if (db_get_file_path_by_info(db_conn, group_id, parent_id, filename, file_path, sizeof(file_path)) != 0) {
+        // Fallback to old method if DB doesn't have path (legacy files)
+        snprintf(file_path, sizeof(file_path), "%s/%s/%s", STORAGE_ROOT, group_name, filename);
+        printf("[DEBUG] db_get_file_path_by_info failed, fallback to: %s\n", file_path);
+    } else {
+        printf("[DEBUG] Found physical path in DB: %s\n", file_path);
+    }
 
-    // Verify file exists in database (optional but recommended)
-    // For now, we'll just check filesystem existence
+    // Verify file exists on filesystem
 
     FILE *fp = fopen(file_path, "rb");
     if (!fp) {
@@ -442,14 +447,18 @@ void* client_thread(void* arg) {
             char *line = line_start;
 
             if (strlen(line) > 0) {
-                char cmd[32] = {0}, arg1[256] = {0}, arg2[256] = {0}, arg3[256] = {0};
-                int parsed = sscanf(line, "%31s %255s %255s %255s", cmd, arg1, arg2, arg3);
+                char *argv[10];
+                int parsed = split_args(line, argv, 10);
 
-                //sscanf trả về số lượng tham số đọc được
                 if (parsed <= 0) {
                     line_start = eol + 2;
                     continue;
                 }
+
+                char *cmd = argv[0];
+                char *arg1 = (parsed > 1) ? argv[1] : "";
+                char *arg2 = (parsed > 2) ? argv[2] : "";
+                char *arg3 = (parsed > 3) ? argv[3] : "";
 
                 // [AUTH COMMANDS]
                 if (strcmp(cmd, STR_LOGIN) == 0) {
@@ -541,7 +550,7 @@ void* client_thread(void* arg) {
                     if (user_id == -1) perform_send_and_log(sock, line, "403 Login required\r\n", current_user);
                     else {
                         char resp[4096] = {0};
-                        dispatch_request(conn, user_id, line, resp, sizeof(resp));
+                        dispatch_request(conn, user_id, parsed, argv, resp, sizeof(resp));
                         strcat(resp, "\r\n");
                         perform_send_and_log(sock, line, resp, current_user);
                     }

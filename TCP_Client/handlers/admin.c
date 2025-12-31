@@ -57,8 +57,8 @@ void handle_kick_member(int sockfd) {
     int selected_group_id = get_selected_admin_group(sockfd);
     if (selected_group_id == -1) return;
     
-    // [SỬA] \n -> \r\n
-    snprintf(buffer, sizeof(buffer), "LIST_MEMBERS %d\r\n", selected_group_id);
+    // [SỬA] LIST_MEMBERS -> LIST_MEM (match protocol.h)
+    snprintf(buffer, sizeof(buffer), "LIST_MEM %d\r\n", selected_group_id);
     send_all(sockfd, buffer, strlen(buffer));
     
     memset(buffer, 0, sizeof(buffer));

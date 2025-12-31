@@ -40,6 +40,7 @@ void db_list_my_groups(MYSQL* conn, int user_id, char* buffer, size_t size);
 
 // File Management Functions
 void db_list_files(MYSQL* conn, int group_id, int parent_id, char* buffer, size_t size);
+void db_list_all_folders(MYSQL* conn, int group_id, char* buffer, size_t size);
 int db_create_folder(MYSQL* conn, int group_id, const char* name, const char* path, int uploaded_by, int parent_id);
 int db_rename_item(MYSQL* conn, int item_id, const char* new_name);
 int db_delete_item(MYSQL* conn, int item_id);
@@ -52,6 +53,15 @@ int db_add_file(MYSQL* conn, int group_id, const char* name, const char* path, l
 // return_type: 0 = lấy ID thư mục cuối (để upload), 1 = lấy ID file cuối (để download)
 // Trả về: ID tìm được, hoặc -1 nếu lỗi/không tìm thấy.
 // Output: Ghi group_id tìm được vào biến con trỏ *out_group_id
+// return_type: 0 = lấy ID thư mục cuối (để upload), 1 = lấy ID file cuối (để download)
+// Trả về: ID tìm được, hoặc -1 nếu lỗi/không tìm thấy.
+// Output: Ghi group_id tìm được vào biến con trỏ *out_group_id
 int db_resolve_path(MYSQL* conn, const char* full_path, int return_type, int *out_group_id);
+
+// Get physical file path from database
+int db_get_file_path_by_info(MYSQL* conn, int group_id, int parent_id, const char* name, char* out_path, size_t out_size);
+
+// Get root directory ID for a group
+int db_get_group_root_id(MYSQL* conn, int group_id);
 
 #endif // DATABASE_H
