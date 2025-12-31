@@ -101,7 +101,7 @@ void handle_list_groups(int sockfd) {
         return;
     }
 
-    printf("\nYour Groups:\n%s\n", buffer);
+    printf("\n%s\n", buffer);
 }
 
 // Handler for List Group Members (Case 6)
@@ -120,7 +120,7 @@ void handle_list_group_members(int sockfd) {
         return;
     }
     buffer[n] = '\0';
-    printf("\nYour Groups:\n%s\n", buffer);
+    printf("\n%s\n", buffer);
 
     // B2: Prompt for group name
     int c; while ((c = getchar()) != '\n' && c != EOF) {} // clear newline
@@ -159,7 +159,7 @@ void handle_leave_group(int sockfd) {
         return;
     }
     buffer[n] = '\0';
-    printf("\nYour Groups:\n%s\n", buffer);
+    printf("\n%s\n", buffer);
 
     // B2: Prompt for group name
     int c; while ((c = getchar()) != '\n' && c != EOF) {} // clear newline

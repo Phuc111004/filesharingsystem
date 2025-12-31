@@ -97,7 +97,9 @@ void dispatch_request(MYSQL *db, int current_user_id, int n, char **argv, char *
         snprintf(response, maxlen, "501 Use Stream Protocol");
     }
     else if (strcmp(cmd, "LIST_USER_GROUPS") == 0) {
-        db_list_user_groups(db, current_user_id, response, 4096);
+        char temp[4096];
+        db_list_user_groups(db, current_user_id, temp, sizeof(temp));
+        snprintf(response, maxlen, "100 Your Groups:\n%s", temp);
     }
     else {
         snprintf(response, maxlen, "400 Unknown Command");
