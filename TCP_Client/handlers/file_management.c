@@ -102,39 +102,7 @@ static void list_files_in_group(int sockfd, int group_id, int parent_id) {
     }
 }
 
-static int get_selected_group_id(int sockfd) {
-    char buffer[32768];
-    snprintf(buffer, sizeof(buffer), "LIST_MY_GROUPS\r\n");
-    send_all(sockfd, buffer, strlen(buffer));
-    
-    memset(buffer, 0, sizeof(buffer));
-    int n = recv_response(sockfd, buffer, sizeof(buffer));
-    if (n <= 0) return -1;
-    buffer[n] = '\0';
-
-    if (is_error_response(buffer)) {
-        printf("%s\n", buffer);
-    } else {
-        printf("\nYour Groups:\n%s\n", buffer);
-    }
-
-    int ids[100];
-    int count = parse_ids_from_response(buffer, ids, 100, "[ID: ");
-    
-    if (count == 0) {
-        return -1;
-    }
-
-    int choice;
-    printf("Select group number to manage (1-%d): ", count);
-    if (scanf("%d", &choice) != 1 || choice < 1 || choice > count) {
-        while(getchar() != '\n');
-        printf("Invalid selection.\n");
-        return -1;
-    }
-    while(getchar() != '\n');
-    return ids[choice - 1];
-}
+// Moved to client_utils.c - use the shared function
 
 void handle_file_management(int sockfd) {
     int group_id = get_selected_group_id(sockfd);

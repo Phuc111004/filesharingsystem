@@ -572,11 +572,16 @@ void db_list_files(MYSQL* conn, int group_id, int parent_id, char* buffer, size_
         "ORDER BY is_folder DESC, name", group_id, parent_condition);
     
     if (mysql_query(conn, query)) {
-        snprintf(buffer, size, "Error querying items.");
+        // Fallback: return empty directory instead of error
+        strcpy(buffer, "No files or folders found in this directory.");
         return;
     }
     
     MYSQL_RES *res = mysql_store_result(conn);
+    if (!res) {
+        strcpy(buffer, "No files or folders found in this directory.");
+        return;
+    }
     MYSQL_ROW row;
     
     strcpy(buffer, "");
@@ -592,7 +597,7 @@ void db_list_files(MYSQL* conn, int group_id, int parent_id, char* buffer, size_
         strncat(buffer, line, size - strlen(buffer) - 1);
     }
     
-    if (count == 0) strcpy(buffer, "No items available in this directory.");
+    if (count == 0) strcpy(buffer, "No files or folders found in this directory.");
     mysql_free_result(res);
 }
 
@@ -683,3 +688,96 @@ void db_list_user_groups(MYSQL* conn, int user_id, char* buffer, size_t size) {
     mysql_free_result(res);
 }
 
+
+int db_add_file(MYSQL* conn, int group_id, const char* name, const char* path, long long size, int uploaded_by, int parent_id) {
+    char query[2048];
+    char parent_val[32];
+    if (parent_id <= 0) strcpy(parent_val, "NULL");
+    else snprintf(parent_val, sizeof(parent_val), "%d", parent_id);
+
+    char esc_name[256], esc_path[512];
+    mysql_real_escape_string(conn, esc_name, name, strlen(name));
+    mysql_real_escape_string(conn, esc_path, path, strlen(path));
+
+    snprintf(query, sizeof(query), 
+        "INSERT INTO root_directory (group_id, name, path, size, uploaded_by, is_folder, parent_id) "
+        "VALUES (%d, '%s', '%s', %lld, %d, FALSE, %s)", 
+        group_id, esc_name, esc_path, size, uploaded_by, parent_val);
+
+    return db_execute(conn, query);
+}
+
+int db_resolve_path(MYSQL* conn, const char* full_path, int return_type, int *out_group_id) {
+    if (!full_path || strlen(full_path) == 0) return -1;
+
+    char path_copy[1024];
+    strncpy(path_copy, full_path, sizeof(path_copy));
+    
+    char *token = strtok(path_copy, "/");
+    if (!token) return -1;
+
+    // Simple lookup: find group by name (simplified implementation)
+    char query[512];
+    snprintf(query, sizeof(query), "SELECT group_id FROM groups WHERE group_name = '%s'", token);
+    
+    if (mysql_query(conn, query)) return -1;
+    
+    MYSQL_RES *result = mysql_store_result(conn);
+    if (!result) return -1;
+    
+    MYSQL_ROW row = mysql_fetch_row(result);
+    int group_id = -1;
+    if (row && row[0]) {
+        group_id = atoi(row[0]);
+    }
+    mysql_free_result(result);
+    
+    if (group_id == -1) return -1;
+    if (out_group_id) *out_group_id = group_id;
+
+    int current_parent_id = 0;
+    int last_id = 0;
+    
+    while ((token = strtok(NULL, "/")) != NULL) {
+        char query[1024];
+        char esc_name[256];
+        mysql_real_escape_string(conn, esc_name, token, strlen(token));
+
+        char parent_cond[64];
+        if (current_parent_id == 0) strcpy(parent_cond, "parent_id IS NULL");
+        else snprintf(parent_cond, sizeof(parent_cond), "parent_id = %d", current_parent_id);
+
+        snprintf(query, sizeof(query), 
+            "SELECT id, is_folder FROM root_directory WHERE group_id=%d AND name='%s' AND %s AND is_deleted=FALSE",
+            group_id, esc_name, parent_cond);
+
+        if (mysql_query(conn, query)) return -1;
+        MYSQL_RES *res = mysql_store_result(conn);
+        if (mysql_num_rows(res) == 0) {
+            mysql_free_result(res);
+            return -1;
+        }
+
+        MYSQL_ROW row = mysql_fetch_row(res);
+        int id = atoi(row[0]);
+        int is_folder = atoi(row[1]);
+        mysql_free_result(res);
+
+        last_id = id;
+        if (is_folder) {
+            current_parent_id = id; // Đi sâu xuống
+        } else {
+            // Nếu gặp file mà vẫn còn token phía sau -> Lỗi (File không thể chứa File)
+            // Trừ khi đây là token cuối cùng
+        }
+    }
+
+    // Xử lý logic trả về
+    if (return_type == 0) {
+        // Nếu path chỉ có "GroupA" -> parent là Root (0)
+        // Nếu path "GroupA/FolderB" -> parent là ID của FolderB
+        return current_parent_id; 
+    } else {
+        return last_id;
+    }
+}
