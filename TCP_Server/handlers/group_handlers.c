@@ -136,8 +136,13 @@ void handle_kick_member(MYSQL *db, int current_user_id, const char *arg1, const 
         if (target_id == -1) {
             snprintf(response, maxlen, "404 User not found");
         } else {
-            db_remove_group_member(db, target_id, group_id);
-            snprintf(response, maxlen, "200 User kicked");
+            // Check if target is also an admin
+            if (db_is_group_admin(db, target_id, group_id)) {
+                 snprintf(response, maxlen, "403 Cannot kick admin");
+            } else {
+                db_remove_group_member(db, target_id, group_id);
+                snprintf(response, maxlen, "200 User kicked");
+            }
         }
     }
 }
