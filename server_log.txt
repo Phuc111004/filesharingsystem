@@ -82,3 +82,12 @@
 [2025-12-30 21:20:40] user=son $ LIST_JOIN_REQUESTS $ No pending join requests.
 [2025-12-30 21:23:57] user=son $ LIST_MY_GROUPS $ [1] 1 [ID: 2]
 [2025-12-30 21:23:59] user=son $ LIST_FILE 2 0 $ 100 List:
+[2025-12-31 12:01:18] user=son $ LOGIN son 123 $ 110 Login success
+[2025-12-31 12:01:23] user=son $ LOGIN son 123 $ 409 Already logged in
+[2025-12-31 12:01:29] user=son $ LIST_MY_GROUPS $ [1] abc [ID: 3]
+[2025-12-31 12:01:31] user=son $ LIST_FILE 3 0 $ 100 List:
+[2025-12-31 12:01:38] user=son $ LIST_FILE 3 2 $ 100 List:
+[2025-12-31 12:03:24] user=son $ LIST_MY_GROUPS $ [1] abc [ID: 3]
+[2025-12-31 12:03:25] user=son $ LIST_FILE 3 0 $ 100 List:
+[2025-12-31 12:04:19] user=son $ UPLOAD 3/0 Chuong4.pdf 436656 $ 150 Ready
+[2025-12-31 12:04:20] user=son $ UPLOAD_DATA $ 200 Upload success
