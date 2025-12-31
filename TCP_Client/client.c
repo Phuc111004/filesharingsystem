@@ -556,7 +556,7 @@ void handle_list_directory(int sockfd) {
  * @function run_client
  * Main loop for the client application.
  */
-void run_client() {
+void run_client(const char *ip, int port) {
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
         perror("Socket creation failed");
@@ -566,9 +566,9 @@ void run_client() {
     struct sockaddr_in serv_addr;
     memset(&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(SERVER_PORT);
+    serv_addr.sin_port = htons(port);
 
-    if (inet_pton(AF_INET, SERVER_IP, &serv_addr.sin_addr) <= 0) {
+    if (inet_pton(AF_INET, ip, &serv_addr.sin_addr) <= 0) {
         perror("Invalid address");
         close(sockfd);
         return;
@@ -580,7 +580,7 @@ void run_client() {
         return;
     }
 
-    printf("Connected to %s:%d\n", SERVER_IP, SERVER_PORT);
+    printf("Connected to %s:%d\n", ip, port);
 
     int choice;
     while (1) {
@@ -674,7 +674,19 @@ void run_client() {
  * @function main
  * Program entry point.
  */
-int main() {
-    run_client();
+int main(int argc, char **argv) {
+    const char *ip = SERVER_IP;
+    int port = SERVER_PORT;
+
+    // Usage: ./client [server_ip] [port]; one argument is treated as port.
+    if (argc >= 3) {
+        ip = argv[1];
+        port = atoi(argv[2]);
+    } else if (argc == 2) {
+        port = atoi(argv[1]);
+    }
+    if (port <= 0) port = SERVER_PORT;
+
+    run_client(ip, port);
     return 0;
 }
