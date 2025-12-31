@@ -196,5 +196,5 @@ void handle_list_group_members(MYSQL *db, int current_user_id, const char *arg, 
 
     char list_buf[3500];
     db_list_group_members_with_roles(db, group_id, list_buf, sizeof(list_buf));
-    snprintf(response, maxlen, "Member List:\n%s", list_buf);
+    snprintf(response, maxlen, "100 Member List:\n%s", list_buf);
 }
