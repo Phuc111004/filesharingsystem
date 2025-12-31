@@ -1,5 +1,6 @@
 #include "client_utils.h"
 #include "../../common/utils.h"
+#include "../../common/file_utils.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
