@@ -593,7 +593,7 @@ void db_list_files(MYSQL* conn, int group_id, int parent_id, char* buffer, size_
         int is_folder = atoi(row[4]);
         const char *type = is_folder ? "FOLDER" : "FILE";
         const char *size_val = is_folder ? "0" : row[3];
-        snprintf(line, sizeof(line), "%s %s %s [ID: %s]", type, row[1], size_val, row[0]);
+        snprintf(line, sizeof(line), "%s %s %s", type, row[1], size_val);
         strncat(buffer, line, size - strlen(buffer) - 1);
     }
     
