@@ -119,18 +119,24 @@ static void remove_logged_user(const char *username) {
  */
 void perform_send_and_log(int sock, const char* raw_cmd, const char* resp, const char* username) {
     if (!resp) return;
+    //không nhận được response từ server thì không log
     time_t now = time(NULL);
-    
+    //giá trị của time_t là số giây kể từ epoch
+    //vì sao truyền NULL?
+    //
     struct tm *t = localtime(&now);
     char time_str[64];
     strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", t);
-
+    //time_str[]: buffer dùng để lưu chuỗi thời gian sau khi format
+    //Chuyển thời gian từ struct tm t sang chuỗi ký tự theo định dạng mong muốn
     char cmd_clean[256];
+
     if (raw_cmd != NULL) {
+        // Sao chép command từ client
         strncpy(cmd_clean, raw_cmd, sizeof(cmd_clean) - 1);
         cmd_clean[sizeof(cmd_clean) - 1] = '\0';
 
-        // Khai báo con trỏ để tìm ký tự xuống dòng
+        // Loại bỏ ký tự xuống dòng nếu có
         char *pos;
         pos = strchr(cmd_clean, '\n');
         if (pos) *pos = '\0';
@@ -324,9 +330,16 @@ void handle_download_request(int client_sock, const char *folder, const char *fi
     }
 
     // Check if user has access to the group
-    if (group_id > 0 && !db_is_group_member(db_conn, user_id, group_id) && !db_is_group_admin(db_conn, user_id, group_id)) {
-        perform_send_and_log(client_sock, "DOWNLOAD", "403 Access denied\r\n", username);
-        return;
+    if (group_id > 0) {
+        int is_member = db_is_group_member(db_conn, user_id, group_id);
+        int is_admin = db_is_group_admin(db_conn, user_id, group_id);
+        printf("[DEBUG] Download access check: user_id=%d, group_id=%d, is_member=%d, is_admin=%d\n", 
+               user_id, group_id, is_member, is_admin);
+        
+        if (!is_member && !is_admin) {
+            perform_send_and_log(client_sock, "DOWNLOAD", "403 Access denied\r\n", username);
+            return;
+        }
     }
 
     // Build file path
@@ -401,7 +414,7 @@ void* client_thread(void* arg) {
     char recvbuf[BUFFER_SIZE];
     char acc[LINE_MAX];
 
-    size_t acc_len = 0;
+    size_t acc_len = 0; //số byte hiện có trong acc
     acc[0] = '\0';
 
     char current_user[128] = {0};
