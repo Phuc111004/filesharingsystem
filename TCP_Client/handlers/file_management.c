@@ -145,6 +145,7 @@ void handle_file_management(int sockfd) {
     snprintf(buffer, sizeof(buffer), "GET_GROUP_NAME %d\r\n", group_id);
     send_all(sockfd, buffer, strlen(buffer));
     recv_response(sockfd, group_name, sizeof(group_name));
+    trim_newline(group_name);
 
     int current_folder_id = 0; // 0 is root
     char current_folder_name[256] = "Root";
@@ -208,6 +209,7 @@ void handle_file_management(int sockfd) {
                 snprintf(buffer, sizeof(buffer), "MKDIR %d %s %d\r\n", group_id, name_arg, current_folder_id);
                 send_all(sockfd, buffer, strlen(buffer));
                 recv_response(sockfd, resp, sizeof(resp));
+                trim_newline(resp);
                 printf("Server: %s\n", resp);
                 break;
             case 5:
@@ -222,6 +224,7 @@ void handle_file_management(int sockfd) {
                 snprintf(buffer, sizeof(buffer), "RENAME %d %d %s\r\n", group_id, item_id, name_arg);
                 send_all(sockfd, buffer, strlen(buffer));
                 recv_response(sockfd, resp, sizeof(resp));
+                trim_newline(resp);
                 printf("Server: %s\n", resp);
                 break;
             case 6:
@@ -233,6 +236,7 @@ void handle_file_management(int sockfd) {
                 snprintf(buffer, sizeof(buffer), "DELETE %d %d\r\n", group_id, item_id);
                 send_all(sockfd, buffer, strlen(buffer));
                 recv_response(sockfd, resp, sizeof(resp));
+                trim_newline(resp);
                 printf("Server: %s\n", resp);
                 break;
             case 7:
@@ -244,6 +248,7 @@ void handle_file_management(int sockfd) {
                 snprintf(buffer, sizeof(buffer), "COPY %d %d %d\r\n", group_id, item_id, current_folder_id);
                 send_all(sockfd, buffer, strlen(buffer));
                 recv_response(sockfd, resp, sizeof(resp));
+                trim_newline(resp);
                 printf("Server: %s\n", resp);
                 break;
             case 8:
@@ -260,6 +265,7 @@ void handle_file_management(int sockfd) {
                 snprintf(buffer, sizeof(buffer), "MOVE %d %d %d\r\n", group_id, item_id, target_parent);
                 send_all(sockfd, buffer, strlen(buffer));
                 recv_response(sockfd, resp, sizeof(resp));
+                trim_newline(resp);
                 printf("Server: %s\n", resp);
                 break;
             default:
